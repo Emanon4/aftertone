@@ -329,3 +329,22 @@
   :root:not([data-theme="light"]) .site-nav{background:#2b221b!important;backdrop-filter:none;-webkit-backdrop-filter:none}
   :root:not([data-theme="light"]) .direction-group{background:#1d1813}
 }
+
+/* Keep the listening surface quiet; detailed numbers live behind explicit disclosure. */
+.site-shell:not(.has-player-track){padding-bottom:40px}
+.hero{padding-top:48px;padding-bottom:22px}
+.current-model{margin-top:9px}
+.search-hints{margin-top:15px}
+.listening-room{padding-top:40px}
+.page-footer{justify-content:center;margin-top:28px}
+.round-details{min-width:0;max-width:70%}
+.round-details summary{cursor:pointer;min-height:32px;display:list-item;align-content:center;font-size:11px}
+.round-details summary:focus-visible{outline:2px solid var(--accent-ink);outline-offset:4px;border-radius:3px}
+.round-details .round-meta{text-align:left;line-height:1.8;margin-top:5px;overflow-wrap:anywhere}
+@media(max-width:760px){
+ .hero{padding-top:32px;padding-bottom:20px}
+ .hero-description{font-size:12px;letter-spacing:0}
+ .listening-room{padding-top:30px}
+ .page-footer{margin-top:22px}
+ .round-details{max-width:65%}
+}
