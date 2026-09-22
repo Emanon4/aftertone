@@ -1,2 +1,22 @@
 <!doctype html>
-<html lang="zh-CN"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/><meta name="theme-color" content="#f6f3ee"/><meta name="description" content="余音 Aftertone：从喜欢的一首出发，在更大的曲库中发现下一首单曲循环。"/><link rel="icon" type="image/svg+xml" href="/favicon.svg?v=original-3"/><title>余音 Aftertone — 下一首，你的单曲循环。</title></head><body><div id="root"></div><script type="module" src="/web/main.tsx"></script></body></html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+  <meta name="theme-color" content="#171513"/>
+  <script>
+    (()=>{
+      let theme="dark";
+      try{if(localStorage.getItem("aftertone-theme")==="light")theme="light";}catch{}
+      document.documentElement.dataset.theme=theme;
+      document.documentElement.classList.toggle("dark",theme==="dark");
+      document.querySelector('meta[name="theme-color"]').content=theme==="dark"?"#171513":"#f7f3ee";
+    })();
+  </script>
+  <style>:root{background:#171513;color-scheme:dark}:root[data-theme="light"]{background:#f7f3ee;color-scheme:light}</style>
+  <meta name="description" content="余音 Aftertone：Jev 辅助筛选，每轮从最多 5,000 首候选中，发现你的下一组七首。"/>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=original-3"/>
+  <title>余音 Aftertone — 下一首，你的单曲循环。</title>
+</head>
+<body><div id="root"></div><script type="module" src="/web/main.tsx"></script></body>
+</html>

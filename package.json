@@ -69,5 +69,10 @@
     "miniflare": {
       "sharp": "0.35.4"
     }
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Emanon4/aftertone.git"
   }
 }

@@ -1,5 +1,6 @@
 import type { Track } from "../lib/music";
 import { selectTracks, type Direction, type JevMetrics } from "../lib/server/recommend";
+import type { ModelConfig } from "../lib/server/model-provider";
 
 export const JOB_TTL_MS = 30 * 60_000;
 export const LEASE_MS = 90_000;
@@ -13,27 +14,37 @@ export type JobRow = {
  input_tokens: number; output_tokens: number; usage_complete: number; jev_ms: number;
  top_json: string; models_json: string; library_count: number; recall_json: string; remaining: number;
  lease_token: string | null; lease_until: number | null; error: string | null;
+ model_config_json: string | null; key_fingerprint: string | null; quota_bucket: string;
 };
 export type NewJob = {
  seed: Track; candidates: Track[]; direction: Direction; notes: string;
  feedback: { liked: string[]; disliked: string[] }; libraryCount: number; recallMeta: unknown;
+ modelConfig?: ModelConfig | null; keyFingerprint?: string | null;
 };
 export async function createJob(db: D1Database, data: NewJob, now: number): Promise<JobRow | null> {
  const id = crypto.randomUUID();
- const batchSize = data.notes.trim() ? 64 : 128;
+ if (Boolean(data.modelConfig) !== Boolean(data.keyFingerprint)) throw new Error("Personal model credentials must match the job configuration.");
+ const batchSize = data.modelConfig?.provider === "openai-compatible" || data.notes.trim() ? 64 : 128;
  const stepSize = batchSize * MAX_BATCHES_PER_STEP;
  const chunks: Track[][] = [];
  for (let i = 0; i < data.candidates.length; i += stepSize) chunks.push(data.candidates.slice(i, i + stepSize));
  const totalBatches = Math.ceil(data.candidates.length / batchSize);
  const day = new Date(now).toISOString().slice(0, 10);
+ const bucket = data.keyFingerprint ? `key:${data.keyFingerprint}` : "site";
+ const budget = data.keyFingerprint
+  ? db.prepare("INSERT INTO api_personal_daily_budget(bucket,day,count) VALUES (?,?,1) ON CONFLICT(bucket,day) DO UPDATE SET count=count+1 WHERE count<30 RETURNING count").bind(bucket, day)
+  : db.prepare("INSERT INTO api_daily_budget(day,count) VALUES (?,1) ON CONFLICT(day) DO UPDATE SET count=count+1 WHERE count<30 RETURNING count").bind(day);
+ const countSql = data.keyFingerprint ? "SELECT count FROM api_personal_daily_budget WHERE day=? AND bucket=?" : "SELECT count FROM api_daily_budget WHERE day=?";
+ const countArgs = data.keyFingerprint ? [day, bucket] : [day];
+ const values = [id, now, now, now + JOB_TTL_MS, JSON.stringify(data.seed), data.direction, data.notes, JSON.stringify(data.feedback), data.candidates.length, totalBatches, batchSize, chunks.length, data.libraryCount, JSON.stringify(data.recallMeta), data.modelConfig ? JSON.stringify(data.modelConfig) : null, data.keyFingerprint || null, bucket];
  // The budget increment, conditional job insert, and candidate chunks commit together.
  const statements = [
   db.prepare("DELETE FROM api_job_steps WHERE job_id IN (SELECT id FROM api_jobs WHERE expires_at < ?)").bind(now - 86_400_000),
   db.prepare("DELETE FROM api_jobs WHERE expires_at < ?").bind(now - 86_400_000),
-  db.prepare("INSERT INTO api_daily_budget(day,count) VALUES (?,1) ON CONFLICT(day) DO UPDATE SET count=count+1 WHERE count<30 RETURNING count").bind(day),
-  db.prepare(`INSERT INTO api_jobs(id,status,created_at,updated_at,expires_at,seed_json,direction,notes,feedback_json,total_count,total_batches,batch_size,total_steps,library_count,recall_json,remaining)
-   SELECT ?,'pending',?,?,?,?,?,?,?,?,?,?,?,?,?,30-(SELECT count FROM api_daily_budget WHERE day=?) WHERE changes()=1 RETURNING *`)
-   .bind(id, now, now, now + JOB_TTL_MS, JSON.stringify(data.seed), data.direction, data.notes, JSON.stringify(data.feedback), data.candidates.length, totalBatches, batchSize, chunks.length, data.libraryCount, JSON.stringify(data.recallMeta), day),
+  budget,
+  db.prepare(`INSERT INTO api_jobs(id,status,created_at,updated_at,expires_at,seed_json,direction,notes,feedback_json,total_count,total_batches,batch_size,total_steps,library_count,recall_json,model_config_json,key_fingerprint,quota_bucket,remaining)
+   SELECT ?,'pending',${values.slice(1).map(() => "?").join(",")},30-(${countSql}) WHERE changes()=1 RETURNING *`)
+   .bind(...values, ...countArgs),
   ...chunks.map((tracks, i) => db.prepare("INSERT INTO api_job_steps(job_id,step_index,candidates_json) SELECT ?,?,? WHERE EXISTS(SELECT 1 FROM api_jobs WHERE id=?)").bind(id, i, JSON.stringify(tracks), id)),
  ];
  const results = await db.batch<JobRow>(statements);
@@ -94,13 +105,15 @@ export function jobView(job: JobRow, now: number) {
  const elapsedMs = Math.max(0, (job.finished_at ?? now) - job.created_at);
  const progress = { scoredCount: job.scored_count, totalCount: job.total_count, completedBatches: job.completed_batches, totalBatches: job.total_batches, elapsedMs };
  const models = JSON.parse(job.models_json) as string[];
+ const modelConfig = job.model_config_json ? JSON.parse(job.model_config_json) as ModelConfig : null;
+ const credentialMode = modelConfig ? "personal" : "site";
  const meta = { candidateCount: job.total_count, actualScoredCount: job.scored_count, libraryCount: job.library_count,
   requestCount: job.request_count, failedRequestCount: job.failed_request_count, wallMs: elapsedMs, elapsedMs, jevMs: job.jev_ms,
   model: models.length === 1 ? models[0] : models.length ? "mixed" : "unknown", models,
-  engine: "jev", evidence: "metadata", usage: { input_tokens: job.input_tokens, output_tokens: job.output_tokens }, usageComplete: Boolean(job.usage_complete),
+  engine: modelConfig?.provider || "jev", credentialMode, modelConfig, modelMs: job.jev_ms, evidence: "metadata", usage: { input_tokens: job.input_tokens, output_tokens: job.output_tokens }, usageComplete: Boolean(job.usage_complete),
   remaining: job.remaining, recall: JSON.parse(job.recall_json),
  };
- return { jobId: job.id, status: job.status, nextStep: job.next_step, totalSteps: job.total_steps, expiresAt: job.expires_at, progress,
+ return { jobId: job.id, status: job.status, nextStep: job.next_step, totalSteps: job.total_steps, expiresAt: job.expires_at, progress, modelConfig, credentialMode,
   ...(job.status === "running" ? { retryAfterMs: 750 } : {}), ...(job.error ? { error: job.error } : {}),
   ...(job.status === "done" ? { tracks: JSON.parse(job.top_json) as Track[], meta } : {}),
  };

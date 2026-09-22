@@ -1,6 +1,7 @@
 import { getLibraryManifest, getTrack, recall, searchSongs } from "../lib/server/catalog";
 import { applyExplicitFilters } from "../lib/server/filters";
 import { rankWithJev, JevScoringError, type Direction } from "../lib/server/recommend";
+import { parseModelConfig, rankWithCompatible, type ModelConfig } from "../lib/server/model-provider";
 import { cancelJob, claimStep, createJob, finishStep, getStepCandidates, jobView, readJob } from "./jobs";
 
 const ALLOWED_ORIGIN = "https://emanon4.github.io";
@@ -11,6 +12,25 @@ export function allowedOrigin(origin: string | null): boolean {
 }
 class ApiError extends Error { status: number; constructor(message: string, status = 400) { super(message); this.status = status; } }
 function ensureConnected(request: Request) { if (request.signal.aborted) throw new ApiError("请求已取消。", 499); }
+function configuredModel(value: unknown, env: AftertoneApiEnv) {
+ try { return parseModelConfig(value, env.MODEL_BASE_URL_ALLOWLIST); }
+ catch { throw new ApiError("模型配置无效，请选择支持的服务地址并填写模型名称。"); }
+}
+function personalKey(request: Request): string {
+ const key = request.headers.get("X-Model-Api-Key")?.trim();
+ if (!key) throw new ApiError("请提供这轮任务使用的个人 API 密钥。", 401);
+ if (key.length > 4096 || /[^\x21-\x7E]/.test(key)) throw new ApiError("个人 API 密钥格式无效。");
+ return key;
+}
+async function fingerprint(key: string): Promise<string> {
+ const bytes = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(key));
+ return Array.from(new Uint8Array(bytes), value => value.toString(16).padStart(2, "0")).join("");
+}
+function sameFingerprint(left: string, right: string): boolean {
+ if (left.length !== right.length) return false;
+ let difference = 0; for (let i = 0; i < left.length; i++) difference |= left.charCodeAt(i) ^ right.charCodeAt(i);
+ return difference === 0;
+}
 async function jsonBody(request: Request, optional = false): Promise<Record<string, unknown>> {
  const reader = request.body?.getReader(); if (!reader) { if (optional) return {}; throw new ApiError("请求格式无效。"); }
  const decoder = new TextDecoder(); let text = "", bytes = 0;
@@ -32,7 +52,7 @@ export function validateRecommendation(body: Record<string, unknown>) {
  for (const k of ["liked", "disliked"] as const) if (Array.isArray(supplied?.[k])) feedback[k] = supplied[k].filter((x: unknown): x is string => typeof x === "string").slice(0, 8).map(x => x.slice(0, 140));
  return { seed: { id: seed.id, provider: seed.provider }, direction: direction as Direction, notes: notes.trim(), excluded: excluded as string[], feedback };
 }
-const defaults = { getLibraryManifest, getTrack, recall, searchSongs, rankWithJev, now: Date.now };
+const defaults = { getLibraryManifest, getTrack, recall, searchSongs, rankWithJev, rankWithCompatible, now: Date.now };
 export function createApi(overrides: Partial<typeof defaults> = {}) {
  const deps = { ...defaults, ...overrides };
  return async (request: Request, env: AftertoneApiEnv): Promise<Response> => {
@@ -42,12 +62,12 @@ export function createApi(overrides: Partial<typeof defaults> = {}) {
   if (!allowedOrigin(origin)) return respond({ error: "请求来源无效。" }, 403);
   if (origin) headers.set("Access-Control-Allow-Origin", origin);
   headers.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-  headers.set("Access-Control-Allow-Headers", "Content-Type");
+  headers.set("Access-Control-Allow-Headers", "Content-Type, X-Model-Api-Key");
   if (request.method === "OPTIONS") { headers.set("Access-Control-Max-Age", "600"); return new Response(null, { status: 204, headers }); }
   try {
    if (url.pathname === "/api/library" && request.method === "GET") {
     const manifest = await deps.getLibraryManifest(request.url, env.ASSETS);
-    return respond({ ...manifest, candidateLimit: 5000, engine: "jev", available: Boolean(env.TYPESAFE_API_KEY) });
+    return respond({ ...manifest, candidateLimit: 5000, engine: "jev", available: Boolean(env.TYPESAFE_API_KEY), byokAvailable: Boolean(env.DB) });
    }
    if (url.pathname === "/api/music" && request.method === "GET") {
     const id = url.searchParams.get("id"), provider = url.searchParams.get("provider") || "deezer";
@@ -56,23 +76,30 @@ export function createApi(overrides: Partial<typeof defaults> = {}) {
     return respond({ tracks: await deps.searchSongs(q) });
    }
    if (url.pathname === "/api/recommend" && request.method === "POST") {
-    if (!env.TYPESAFE_API_KEY) throw new ApiError("Jev 尚未连接，仍可搜索、试听和收藏。", 503);
     if (!env.DB) throw new ApiError("筛选任务服务暂不可用。", 503);
-    const input = validateRecommendation(await jsonBody(request));
+    const body = await jsonBody(request);
+    const input = validateRecommendation(body);
+    const modelConfig = configuredModel(body.modelConfig, env);
+    let keyFingerprint: string | null = null;
+    if (modelConfig) keyFingerprint = await fingerprint(personalKey(request));
+    else {
+     if (request.headers.has("X-Model-Api-Key")) throw new ApiError("使用个人密钥时，请同时提供模型配置。");
+     if (!env.TYPESAFE_API_KEY) throw new ApiError("站点 Jev 尚未连接，请使用个人 API 密钥，或先搜索、试听和收藏。", 503);
+    }
     ensureConnected(request);
     const seed = await deps.getTrack(input.seed.id, input.seed.provider);
     ensureConnected(request);
     const recalled = await deps.recall(seed, input.excluded, input.direction, request.url, { assets: env.ASSETS, limit: 5000 });
     ensureConnected(request);
     const candidates = applyExplicitFilters(recalled.candidates, input.notes);
-    if (!candidates.length) return respond({ status: "done", jobId: null, tracks: [], progress: { scoredCount: 0, totalCount: 0, completedBatches: 0, totalBatches: 0, elapsedMs: 0 }, meta: { engine: "constraints", candidateCount: 0, actualScoredCount: 0, libraryCount: recalled.libraryCount, requestCount: 0, elapsedMs: 0, wallMs: 0, jevMs: 0 } });
-    const job = await createJob(env.DB, { ...input, seed: recalled.seed, candidates, libraryCount: recalled.libraryCount, recallMeta: { ...recalled.recallMeta, returnedAfterFilters: candidates.length } }, deps.now());
+    if (!candidates.length) return respond({ status: "done", jobId: null, tracks: [], modelConfig, credentialMode: modelConfig ? "personal" : "site", progress: { scoredCount: 0, totalCount: 0, completedBatches: 0, totalBatches: 0, elapsedMs: 0 }, meta: { engine: "constraints", candidateCount: 0, actualScoredCount: 0, libraryCount: recalled.libraryCount, requestCount: 0, elapsedMs: 0, wallMs: 0, jevMs: 0 } });
+    const job = await createJob(env.DB, { ...input, modelConfig, keyFingerprint, seed: recalled.seed, candidates, libraryCount: recalled.libraryCount, recallMeta: { ...recalled.recallMeta, returnedAfterFilters: candidates.length } }, deps.now());
     if (request.signal.aborted) {
      // The transaction may already have committed, but no model work should remain pending.
      if (job) await cancelJob(env.DB, job.id, deps.now());
      ensureConnected(request);
     }
-    if (!job) throw new ApiError("今天全站的 30 轮智能找歌已用完。你仍然可以试听和收藏，明天再继续。", 429);
+    if (!job) throw new ApiError(modelConfig ? "这把个人密钥今天的 30 轮找歌已用完，请明天再继续。" : "今天全站的 30 轮智能找歌已用完。你仍然可以试听和收藏，或使用个人 API 密钥。", 429);
     return respond(jobView(job, deps.now()), 201);
    }
    const match = url.pathname.match(/^\/api\/jobs\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:\/(step|cancel))?$/i);
@@ -83,8 +110,17 @@ export function createApi(overrides: Partial<typeof defaults> = {}) {
     if (request.method === "GET" && !match[2]) return respond(jobView(job, deps.now()));
     if (request.method === "POST" && match[2] === "cancel") { job = await cancelJob(env.DB, job.id, deps.now()) || job; return respond(jobView(job, deps.now())); }
     if (request.method === "POST" && match[2] === "step") {
+     let modelConfig: ModelConfig | null = null;
+     let modelKey: string;
+     if (job.model_config_json || job.key_fingerprint) {
+      if (!job.model_config_json || !job.key_fingerprint) throw new ApiError("个人任务配置不完整，请重新创建任务。", 503);
+      modelConfig = configuredModel(JSON.parse(job.model_config_json), env);
+      if (!modelConfig) throw new ApiError("个人任务配置不完整，请重新创建任务。", 503);
+      modelKey = personalKey(request);
+      if (!sameFingerprint(await fingerprint(modelKey), job.key_fingerprint)) throw new ApiError("个人密钥与创建这轮任务时不一致，请使用原密钥。", 403);
+     } else modelKey = env.TYPESAFE_API_KEY;
      if (job.status !== "pending") return respond(jobView(job, deps.now()), job.status === "running" ? 202 : 200);
-     if (!env.TYPESAFE_API_KEY) throw new ApiError("Jev 暂未连接，本步骤尚未执行。", 503);
+     if (!modelKey) throw new ApiError("站点 Jev 暂未连接，本步骤尚未执行。", 503);
      const body = await jsonBody(request, true);
      if (body.step !== undefined && (!Number.isInteger(body.step) || Number(body.step) < 0)) throw new ApiError("步骤编号无效。");
      if (body.step !== undefined && body.step !== job.next_step) return respond(jobView(job, deps.now()));
@@ -102,7 +138,11 @@ export function createApi(overrides: Partial<typeof defaults> = {}) {
        return respond(jobView(current, deps.now()));
       }
       // One step starts at most four bounded requests. Never retry after a lost lease.
-      const result = await deps.rankWithJev(JSON.parse(claimed.seed_json), candidates, claimed.direction, claimed.notes, env.TYPESAFE_API_KEY, JSON.parse(claimed.feedback_json), { batchSize: claimed.batch_size, concurrency: 4, timeoutMs: 60_000, signal: request.signal });
+      const seed = JSON.parse(claimed.seed_json), feedback = JSON.parse(claimed.feedback_json);
+      const options = { batchSize: claimed.batch_size, concurrency: 4, timeoutMs: 60_000, signal: request.signal, ...(modelConfig?.provider === "jev" ? { model: modelConfig.model } : {}) };
+      const result = modelConfig?.provider === "openai-compatible"
+       ? await deps.rankWithCompatible(seed, candidates, claimed.direction, claimed.notes, modelKey, feedback, modelConfig, options)
+       : await deps.rankWithJev(seed, candidates, claimed.direction, claimed.notes, modelKey, feedback, options);
       scoredResult = result;
       settled = await finishStep(env.DB, claimed, result, result.tracks, null, deps.now());
      } catch (error) {

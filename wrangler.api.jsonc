@@ -12,7 +12,7 @@
   "d1_databases": [{
     "binding": "DB",
     "database_name": "aftertone-api",
-    "database_id": "00000000-0000-0000-0000-000000000000",
+    "database_id": "3a81b1bb-d4b1-4d90-ab33-4ee6e918f453",
     "migrations_dir": "worker/migrations"
   }],
   "secrets": { "required": ["TYPESAFE_API_KEY"] },

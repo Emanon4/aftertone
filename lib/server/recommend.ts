@@ -3,7 +3,8 @@ export type Direction="close"|"sideways"|"bold";
 const identity=(t:Track)=>`${t.provider}_${t.id}`;
 const artistKey=(name:string)=>name.toLowerCase().normalize("NFKC").replace(/[^\p{L}\p{N}]/gu, "");
 type Answer={type:string;score:number;confidence:number};
-export function readScore(answer:Answer|undefined){if(answer?.type!=="score"||!Number.isFinite(answer.score)||answer.score<0||answer.score>3||!Number.isFinite(answer.confidence)||answer.confidence<0||answer.confidence>1)throw new Error("Jev 返回了不完整的评分，本轮结果未采用，请重试。");return answer.score;}
+class ModelResponseError extends Error {}
+export function readScore(answer:Answer|undefined){if(answer?.type!=="score"||!Number.isFinite(answer.score)||answer.score<0||answer.score>3||!Number.isFinite(answer.confidence)||answer.confidence<0||answer.confidence>1)throw new ModelResponseError("Jev 返回了不完整的评分，本轮结果未采用，请重试。");return answer.score;}
 export function selectTracks(scored:Track[],seed:Track,direction:Direction):Track[]{
  const ranked=[...scored].sort((a,b)=>(b.score||0)-(a.score||0));const result:Track[]=[];const artists=new Map<string,number>();
  for(const track of ranked){if((artists.get(artistKey(track.artist))||0)>=1)continue;if(direction!=="close"&&artistKey(track.artist)===artistKey(seed.artist))continue;result.push(track);artists.set(artistKey(track.artist),1);if(result.length>=14)break;}
@@ -24,6 +25,7 @@ export type JevProgress = {
 };
 export type JevScoringOptions = {
  batchSize?: number; concurrency?: number; timeoutMs?: number;
+ model?: string;
  onProgress?: (progress: JevProgress) => void; signal?: AbortSignal; fetcher?: typeof fetch;
 };
 export type JevMetrics = {
@@ -129,7 +131,7 @@ export async function rankWithJev(
     candidate,
    }, criteria: requestCriteria };
   }
-  const body = JSON.stringify({ model: "jev-latest", state, questions });
+  const body = JSON.stringify({ model: options.model || "jev-latest", state, questions });
   const batchStarted = performance.now();
   const metric: JevBatchMetric = { index, candidateCount: tracks.length, questionCount: Object.keys(questions).length,
    wallMs: 0, outcome: "failed", requestBytes: new TextEncoder().encode(body).length };
@@ -142,13 +144,14 @@ export async function rankWithJev(
    });
    metric.status = response.status;
    if (!response.ok) {
-    metric.retryAfter = response.headers.get("retry-after") || undefined;
-    throw new Error(response.status === 429 ? "Jev 当前请求较多，本轮未完成，没有生成部分推荐。" : `Jev 暂时无法完成筛选（${response.status}）。没有生成推荐。`);
+    const retryAfter = response.headers.get("retry-after");
+    metric.retryAfter = retryAfter && /^\d{1,8}$/.test(retryAfter) ? retryAfter : undefined;
+    throw new ModelResponseError(response.status === 429 ? "Jev 当前请求较多，本轮未完成，没有生成部分推荐。" : `Jev 暂时无法完成筛选（${response.status}）。没有生成推荐。`);
    }
    const data = await response.json() as { answers?: Record<string, Answer>; model?: string; usage?: JevUsage };
-   if (typeof data.model === "string" && data.model) metric.model = data.model;
+   if (typeof data.model === "string" && /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$/.test(data.model) && !data.model.includes(key)) metric.model = data.model;
    if (validUsage(data.usage)) metric.usage = data.usage;
-   if (!data.answers || typeof data.answers !== "object") throw new Error("Jev 返回格式异常，本轮结果未采用。");
+   if (!data.answers || typeof data.answers !== "object") throw new ModelResponseError("Jev 返回格式异常，本轮结果未采用。");
    const scored = tracks.map(track => {
     const fit = readScore(data.answers![`fit_${identity(track)}`]);
     const preference = hasRequest ? readScore(data.answers![`request_${identity(track)}`]) : fit;
@@ -178,7 +181,7 @@ export async function rankWithJev(
  if (options.signal?.aborted) failure ||= options.signal.reason || new Error("筛选已取消。");
  if (failure || actualScoredCount !== candidates.length) {
   progress("failed");
-  const message = options.signal?.aborted ? "筛选已取消，没有生成部分推荐。" : failure instanceof Error ? failure.message : "评分未覆盖全部候选，本轮结果未采用。";
+  const message = options.signal?.aborted ? "筛选已取消，没有生成部分推荐。" : failure instanceof ModelResponseError ? failure.message : "模型请求未完成或返回了无效数据，本轮结果未采用。";
   throw new JevScoringError(message, metrics());
  }
  const scored = results.flat();

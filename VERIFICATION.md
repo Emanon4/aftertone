@@ -11,20 +11,48 @@
 
 ## 后端与界面
 
-- 34项测试通过：全部候选评分、双问题偏好、批次上限、去重与艺术家多样性、显式约束、失败拒绝、每日原子配额、并发/重复步骤、失效租约、取消与断连竞争、分片上限和 CORS。
-- TypeScript与本次文件ESLint通过；前端生产构建通过；Worker dry-run通过，新曲库读取79个资产文件。
+- 本轮 81 项测试通过（含子测试）：覆盖全部候选评分、双问题偏好、批次上限、去重与艺术家多样性、显式约束、失败拒绝、每日原子配额、并发/重复步骤、失效租约、取消与断连竞争、分片上限和 CORS，以及个人模型配置、凭据隔离、兼容评分适配器和收听链接。
+- TypeScript、ESLint、前端生产构建、Worker dry-run 通过。dry-run 是构建与打包检查，不证明 Worker 已在生产部署或供应商调用已成功。
 - 真实本地 Worker+D1 已启动于127.0.0.1:8788。Radiohead搜索16条，No Surprises详情返回试听，CDN HEAD200 audio/mpeg。错误参数400，非法Origin403。
-- 浏览器真实播放 Show Me How：paused=false，duration=29.988563秒、播放时钟前进；收藏刷新后保留。
+- 本地浏览器真实播放 Show Me How：paused=false，duration=29.988563 秒、播放时钟前进；片段结束后重播成功，重播时钟为 0.018221 秒。收藏刷新后保留。此记录不替代新前端的公开部署验收。
 - 浏览器使用明确的 mock job 验证实际进度渲染、两组各7首、嵌套meta、按钮忙碌状态。该UI夹具不作为真实模型耗时证据。
 - 推荐页面1440、768、390、320宽度均无页面水平溢出；手机唱片轨道保留局部横向滑动。修复导航padding过渡导致的短暂宽度溢出。
-- 保留原橙红唱片 Logo；按用户参考统一暖白/橙红UI，并对搜索台、分段按钮和播放器采用克制的玻璃层。
+- 保留原橙红 Logo 和玻璃听音室布局；当前代码默认深色，可从页脚切换暖白浅色，主题偏好保存在当前浏览器。主题状态与个人模型密钥存储相互独立。
 - 降低动态效果与不支持backdrop-filter的回退保留。图片加载与入场动画结束后截图检查，证据在output/playwright（不提交Git）。
 - 源码及公开构建产物精确密钥扫描无匹配；.env及.dev.vars保持忽略，.dev.vars权限0600。
 
+## Jev 与个人模型
+
+- 首页与关于窗口说明 Jev 从歌曲资料、偏好和反馈筛选真实候选；明确当前模型不直接听音频，资料关联不构成“好听”的保证。
+- 模型设置支持站点 Jev、个人 Jev 和四个官方 OpenAI 兼容模板：OpenAI、DeepSeek、Qwen 国内、Qwen 国际。界面允许选择模板与模型名称，不提供任意地址输入；后端验证地址白名单并拒绝上游重定向。
+- 个人 Key 仅在当前标签页内存保留，通过 `X-Model-Api-Key` 向 Worker 传递。不写入浏览器持久存储、请求 JSON 或 D1 原文字段；D1 保存配置和 SHA-256 指纹，按 Key 隔离每日额度，并校验推进任务使用的凭据。切回站点模式清除已应用的个人 Key；刷新或关闭页面后需重新填写。
+- 兼容适配器测试覆盖完整评分、缺项/重复/越界/错误 JSON、拒答、HTTP 错误、取消和错误信息脱敏。批次上限为 64 个问题、并发不超过 4；无有效完整评分时不产生部分推荐。
+- 浏览器 mock 验证 Jev 与 DeepSeek 模板的 create/step 使用同一 Key header，正文与 localStorage/sessionStorage/IndexedDB 不含 Key，刷新与切回站点清除 Key。401 仅执行一次 step；未提交的网络/503 失败不重发该步，已提交进度可读取恢复，恢复次数上限为 3。
+- 生产个人任务实测：缺 Key 返回 401，换 Key 推进返回 403；创建后取消，D1 的两个验证任务均为 cancelled、5,000 候选、scored_count=0、request_count=0。
+- 四个兼容模板**未进行真实供应商账号调用实测**。本地测试不能证明指定模型在使用者账号可用，也不能证明其实际时延、费用或推荐质量。已有 Jev 真实基准只代表前述一次历史调用。
+
+## 六平台收听入口
+
+- `getListeningLinks(track)` 提供 Deezer、Spotify、Apple Music、网易云音乐、QQ 音乐、YouTube Music 六个平台，来源平台优先，并按平台 ID 与 URL 去重。
+- 来源 Deezer/iTunes URL 只有通过 HTTPS、官方域名及歌曲 ID 校验时标为 `track`；其他入口为 `search`，使用编码后的歌名与歌手，不宣称已经映射为同一录音。错误 ID、非歌曲页面、伪造域名、凭据及异常端口退回官方搜索。
+- 浏览器验证六个平台均出现、Escape 恢复触发按钮焦点、选中一个平台只打开一个无 opener 的窗口；320 深色与 390 浅色弹窗无水平溢出。
+- 8 项链接单测通过，包含中文与 URL 特殊字符编码、来源顺序、精确链接保留、去重及恶意 URL 拒绝。
+- 本轮恰好进行 6 次公开 HTTP 检查：Deezer、Spotify、网易云、QQ 音乐搜索 URL 返回 200 并保留地址；Apple Music `/us/search` 在当前网络重定向至 `/cn/new`；YouTube Music 返回 200，但页面为旧浏览器提示。
+- 上述 HTTP 结果不等于浏览器搜索结果、登录状态或全曲播放验证；网易云 hash 路由也无法由 HTTP 响应单独证明。未进行账号登录或跨平台完整版播放验证。
+
 ## 发布范围
 
-公开Pages静态发布仓库为 Emanon4/aftertone-pages，源码 aftertone 保持私有。生产构建未设置 VITE_API_BASE 时明确呈现听音室预览，点击歌曲打开官方平台，不发送不存在的API请求。
+公开 Pages 静态发布仓库为 `Emanon4/aftertone-pages`。源码 `Emanon4/aftertone` 已设置为 PUBLIC，包含 `LICENSE` 与 `THIRD_PARTY_NOTICES.md`。Pages 构建 `98e6854` 的 GitHub 发布状态为 built。
 
-独立生产API、D1、secret尚待用户完成Cloudflare账户登录后部署。当前不能宣称公开网页完整的智能筛选和站内试听已经上线。旧Sites不作为新发布目标。
+生产 Worker 已上线：`https://aftertone-api.moji-pet.workers.dev`。Cloudflare D1 已绑定，`0001` 和 `0002` 两次远端迁移已部署。生产实据保存在本地 `output/production-api-check.json`：
 
-未验证：推荐质量提升、真实复听率、跨地区试听覆盖、全球完整曲库，以及生产Cloudflare端到端筛选耗时。
+- `/api/library` 返回 200，曲库 145,548 首，`available` 与 `byokAvailable` 均为 `true`，表示站点 Key 与个人模型任务入口已配置，不代表本轮真实调用了模型。
+- 搜索 Radiohead 返回 200、16 条结果；曲目详情返回 200 并包含试听地址。
+- 允许来源的 CORS 正常；预检返回 204，允许 `Content-Type, X-Model-Api-Key`；非法 Origin 返回 403。
+- 创建推荐任务返回 201：5,000 首候选、10 个步骤，任务创建请求耗时 4,974 ms；随后取消，状态 `cancelled`、实际评分数 0。这不是生产模型评分或完整推荐耗时测试。
+
+公开网页已显示深色主题、Jev 首页说明、模型设置与六平台入口，并已连接生产 API。真实网页搜索 Radiohead 返回 16 条，播放 Show Me How 时 paused=false、currentTime=0.209371、duration=29.988563；此检查不调用评分模型。生产构建未设置 `VITE_API_BASE` 时仍明确呈现听音室预览，不发起不存在的 API 请求。旧 Sites 不作为新发布目标。
+
+MIT 覆盖项目原始代码与文档，不授予第三方音乐、元数据、封面、试听、商标或服务的使用权；Deezer API 的非商业条款与 Apple/iTunes 内容条款仍适用。第三方源码与依赖许可证分别保留，未将音乐数据整体重新许可为 MIT。
+
+未验证：四个兼容模板的真实供应商调用、推荐质量提升、真实复听率、跨地区试听覆盖、全球完整曲库、生产 Cloudflare 端到端筛选耗时。README 中扩充非热门作品、补齐来源字段和按实际试听反馈验收的建议尚未实施。
