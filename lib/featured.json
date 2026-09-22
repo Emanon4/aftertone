@@ -1,0 +1,74 @@
+[
+  {
+    "id": "2579890802",
+    "provider": "deezer",
+    "title": "Show Me How",
+    "artist": "Men I Trust",
+    "artistId": "6390014",
+    "album": "Show Me How",
+    "albumId": "522165162",
+    "image": "https://cdn-images.dzcdn.net/images/cover/6f4f35fdc77ef818f0e0e29211cac77f/500x500-000000-80-0-0.jpg",
+    "url": "https://www.deezer.com/track/2579890802",
+    "duration": 215
+  },
+  {
+    "id": "2950356641",
+    "provider": "deezer",
+    "title": "Friday Morning (Radio Edit)",
+    "artist": "Khruangbin",
+    "artistId": "5328540",
+    "album": "Friday Morning",
+    "albumId": "630347091",
+    "image": "https://cdn-images.dzcdn.net/images/cover/d54914487ea1eaef02d429e3dc55efef/500x500-000000-80-0-0.jpg",
+    "url": "https://www.deezer.com/track/2950356641",
+    "duration": 254
+  },
+  {
+    "id": "3082423091",
+    "provider": "deezer",
+    "title": "No One Noticed (Extended English)",
+    "artist": "The Marías",
+    "artistId": "12607183",
+    "album": "No One Noticed (Extended)",
+    "albumId": "667507571",
+    "image": "https://cdn-images.dzcdn.net/images/cover/87c51a5a4a8d95c301ba8530d9f877c2/500x500-000000-80-0-0.jpg",
+    "url": "https://www.deezer.com/track/3082423091",
+    "duration": 284
+  },
+  {
+    "id": "144010758",
+    "provider": "deezer",
+    "title": "Apocalypse",
+    "artist": "Cigarettes After Sex",
+    "artistId": "9568982",
+    "album": "Cigarettes After Sex",
+    "albumId": "15605454",
+    "image": "https://cdn-images.dzcdn.net/images/cover/2db20377876da16feb8ec9652e835a81/500x500-000000-80-0-0.jpg",
+    "url": "https://www.deezer.com/track/144010758",
+    "duration": 290
+  },
+  {
+    "id": "138546809",
+    "provider": "deezer",
+    "title": "Weird Fishes / Arpeggi",
+    "artist": "Radiohead",
+    "artistId": "399",
+    "album": "In Rainbows",
+    "albumId": "14880659",
+    "image": "https://cdn-images.dzcdn.net/images/cover/a175af9b7d329bc678cb4d26fc13d6de/500x500-000000-80-0-0.jpg",
+    "url": "https://www.deezer.com/track/138546809",
+    "duration": 318
+  },
+  {
+    "id": "499360512",
+    "provider": "deezer",
+    "title": "Yume Utsutsu",
+    "artist": "Lamp",
+    "artistId": "81875",
+    "album": "Lamp Genso",
+    "albumId": "63464932",
+    "image": "https://cdn-images.dzcdn.net/images/cover/7072c41c8a9c6d6557d57f5670e9a154/500x500-000000-80-0-0.jpg",
+    "url": "https://www.deezer.com/track/499360512",
+    "duration": 315
+  }
+]
