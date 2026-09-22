@@ -1,0 +1,1514 @@
+{
+  "schemaVersion": 1,
+  "provider": "deezer",
+  "apiBase": "https://api.deezer.com",
+  "snapshotCollectedFrom": "2026-09-22T15:33:15.028803+00:00",
+  "snapshotCollectedThrough": "2026-09-22T15:40:52.849845+00:00",
+  "snapshotTrackCount": 5235,
+  "snapshotTracksSha256": "86478a7fe32df5927ad94b27b4aae111e4a659707cfd6917c5ea5fbb6a95ae2c",
+  "requestLimit": 450,
+  "concurrency": 3,
+  "tracksPerArtist": 35,
+  "collectArtistIds": [
+    "1",
+    "6",
+    "9",
+    "11",
+    "13",
+    "14",
+    "27",
+    "119",
+    "129",
+    "166",
+    "169",
+    "181",
+    "202",
+    "203",
+    "232",
+    "259",
+    "381",
+    "399",
+    "404",
+    "405",
+    "491",
+    "535",
+    "580",
+    "599",
+    "630",
+    "640",
+    "647",
+    "689",
+    "719",
+    "744",
+    "789",
+    "848",
+    "860",
+    "926",
+    "931",
+    "997",
+    "1023",
+    "1036",
+    "1041",
+    "1098",
+    "1154",
+    "1297",
+    "1399",
+    "1404",
+    "1417",
+    "1613",
+    "1744",
+    "1834",
+    "1862",
+    "1910",
+    "1918",
+    "1978",
+    "1999",
+    "2021",
+    "2027",
+    "2033",
+    "2056",
+    "2059",
+    "2060",
+    "2062",
+    "2077",
+    "2322",
+    "2325",
+    "2326",
+    "2449",
+    "2731",
+    "2799",
+    "2814",
+    "2857",
+    "2907",
+    "2947",
+    "3280",
+    "3283",
+    "3545",
+    "4064",
+    "4086",
+    "4917",
+    "5004",
+    "5024",
+    "5088",
+    "5123",
+    "5136",
+    "5145",
+    "5168",
+    "5853",
+    "5871",
+    "5999",
+    "6165",
+    "6374",
+    "6542",
+    "6980",
+    "8209",
+    "8741",
+    "9219",
+    "10587",
+    "12038",
+    "12246",
+    "15827",
+    "15929",
+    "58960",
+    "58962",
+    "62996",
+    "66582",
+    "67166",
+    "69175",
+    "70067",
+    "72019",
+    "73805",
+    "74444",
+    "75055",
+    "75172",
+    "78360",
+    "78658",
+    "78668",
+    "79503",
+    "88560",
+    "96838",
+    "131693",
+    "152366",
+    "211417",
+    "240672",
+    "246791",
+    "258846",
+    "277491",
+    "294359",
+    "336440",
+    "353454",
+    "395172",
+    "432122",
+    "450526",
+    "525046",
+    "1058631",
+    "1350335",
+    "2810121",
+    "3830821",
+    "4623828",
+    "4679933",
+    "4784381",
+    "5186139",
+    "5297021",
+    "6302254",
+    "6627214",
+    "6630050",
+    "6839351",
+    "6982223",
+    "9197006",
+    "9829340",
+    "10159994",
+    "10583405",
+    "10803980",
+    "11152580",
+    "11819131",
+    "12566278",
+    "12591176",
+    "13628349",
+    "14203655",
+    "14755359",
+    "14914065",
+    "68821062",
+    "70864742",
+    "71690712",
+    "130058152",
+    "248809502",
+    "268008682",
+    "268318922",
+    "294102581",
+    "412389541"
+  ],
+  "artists": [
+    {
+      "id": "246791",
+      "name": "Drake",
+      "collectionGroups": []
+    },
+    {
+      "id": "12246",
+      "name": "Taylor Swift",
+      "collectionGroups": []
+    },
+    {
+      "id": "10583405",
+      "name": "Bad Bunny",
+      "collectionGroups": []
+    },
+    {
+      "id": "11819131",
+      "name": "Noah Kahan",
+      "collectionGroups": []
+    },
+    {
+      "id": "259",
+      "name": "Michael Jackson",
+      "collectionGroups": []
+    },
+    {
+      "id": "11152580",
+      "name": "Olivia Rodrigo",
+      "collectionGroups": []
+    },
+    {
+      "id": "92",
+      "name": "Linkin Park",
+      "collectionGroups": []
+    },
+    {
+      "id": "4050205",
+      "name": "The Weeknd",
+      "collectionGroups": []
+    },
+    {
+      "id": "1562681",
+      "name": "Ariana Grande",
+      "collectionGroups": []
+    },
+    {
+      "id": "13",
+      "name": "Eminem",
+      "collectionGroups": []
+    },
+    {
+      "id": "7188840",
+      "name": "Morgan Wallen",
+      "collectionGroups": []
+    },
+    {
+      "id": "525046",
+      "name": "Kendrick Lamar",
+      "collectionGroups": [
+        "hip-hop"
+      ]
+    },
+    {
+      "id": "165930",
+      "name": "Future",
+      "collectionGroups": []
+    },
+    {
+      "id": "5297021",
+      "name": "KAROL G",
+      "collectionGroups": []
+    },
+    {
+      "id": "564",
+      "name": "Rihanna",
+      "collectionGroups": []
+    },
+    {
+      "id": "429675",
+      "name": "Bruno Mars",
+      "collectionGroups": []
+    },
+    {
+      "id": "230",
+      "name": "Kanye West",
+      "collectionGroups": []
+    },
+    {
+      "id": "647650",
+      "name": "Twenty One Pilots",
+      "collectionGroups": []
+    },
+    {
+      "id": "599",
+      "name": "My Chemical Romance",
+      "collectionGroups": []
+    },
+    {
+      "id": "75491",
+      "name": "Lady Gaga",
+      "collectionGroups": []
+    },
+    {
+      "id": "74309",
+      "name": "Lil Wayne",
+      "collectionGroups": []
+    },
+    {
+      "id": "9635624",
+      "name": "Billie Eilish",
+      "collectionGroups": []
+    },
+    {
+      "id": "14",
+      "name": "Gorillaz",
+      "collectionGroups": []
+    },
+    {
+      "id": "5062414",
+      "name": "Hozier",
+      "collectionGroups": []
+    },
+    {
+      "id": "134790",
+      "name": "Tame Impala",
+      "collectionGroups": []
+    },
+    {
+      "id": "145",
+      "name": "Beyoncé",
+      "collectionGroups": []
+    },
+    {
+      "id": "102",
+      "name": "Chris Brown",
+      "collectionGroups": []
+    },
+    {
+      "id": "399",
+      "name": "Radiohead",
+      "collectionGroups": [
+        "rock"
+      ]
+    },
+    {
+      "id": "10977",
+      "name": "Paramore",
+      "collectionGroups": []
+    },
+    {
+      "id": "1424821",
+      "name": "Lana Del Rey",
+      "collectionGroups": []
+    },
+    {
+      "id": "6982223",
+      "name": "BTS",
+      "collectionGroups": [
+        "japan-korea"
+      ]
+    },
+    {
+      "id": "404",
+      "name": "Fall Out Boy",
+      "collectionGroups": []
+    },
+    {
+      "id": "13916083",
+      "name": "Fuerza Regida",
+      "collectionGroups": []
+    },
+    {
+      "id": "1",
+      "name": "The Beatles",
+      "collectionGroups": [
+        "rock"
+      ]
+    },
+    {
+      "id": "458",
+      "name": "System of a Down",
+      "collectionGroups": []
+    },
+    {
+      "id": "5531258",
+      "name": "SZA",
+      "collectionGroups": []
+    },
+    {
+      "id": "10159994",
+      "name": "$uicideboy$",
+      "collectionGroups": []
+    },
+    {
+      "id": "1194083",
+      "name": "Tyler, The Creator",
+      "collectionGroups": []
+    },
+    {
+      "id": "5578942",
+      "name": "Doja Cat",
+      "collectionGroups": []
+    },
+    {
+      "id": "13631667",
+      "name": "Don Toliver",
+      "collectionGroups": []
+    },
+    {
+      "id": "169",
+      "name": "Fleetwood Mac",
+      "collectionGroups": []
+    },
+    {
+      "id": "1002521",
+      "name": "Carly Rae Jepsen",
+      "collectionGroups": []
+    },
+    {
+      "id": "11279454",
+      "name": "YoungBoy Never Broke Again",
+      "collectionGroups": []
+    },
+    {
+      "id": "14867123",
+      "name": "Ella Langley",
+      "collectionGroups": []
+    },
+    {
+      "id": "11025166",
+      "name": "Sleep Token",
+      "collectionGroups": []
+    },
+    {
+      "id": "9219",
+      "name": "Disney",
+      "collectionGroups": []
+    },
+    {
+      "id": "416239",
+      "name": "Imagine Dragons",
+      "collectionGroups": []
+    },
+    {
+      "id": "12816021",
+      "name": "Megan Thee Stallion",
+      "collectionGroups": []
+    },
+    {
+      "id": "1462230",
+      "name": "Charli xcx",
+      "collectionGroups": []
+    },
+    {
+      "id": "535",
+      "name": "Deftones",
+      "collectionGroups": [
+        "metal"
+      ]
+    },
+    {
+      "id": "69175",
+      "name": "Jay Chou",
+      "collectionGroups": []
+    },
+    {
+      "id": "131693",
+      "name": "Faye Wong",
+      "collectionGroups": []
+    },
+    {
+      "id": "78360",
+      "name": "Teresa Teng",
+      "collectionGroups": []
+    },
+    {
+      "id": "75172",
+      "name": "Eason Chan",
+      "collectionGroups": []
+    },
+    {
+      "id": "395172",
+      "name": "MAYDAY!",
+      "collectionGroups": []
+    },
+    {
+      "id": "450526",
+      "name": "G.E.M.",
+      "collectionGroups": []
+    },
+    {
+      "id": "62996",
+      "name": "Ryuichi Sakamoto",
+      "collectionGroups": []
+    },
+    {
+      "id": "66582",
+      "name": "Joe Hisaishi",
+      "collectionGroups": []
+    },
+    {
+      "id": "248809502",
+      "name": "Hikaru Utada",
+      "collectionGroups": []
+    },
+    {
+      "id": "211417",
+      "name": "Sheena Ringo",
+      "collectionGroups": []
+    },
+    {
+      "id": "1978",
+      "name": "Nujabes",
+      "collectionGroups": []
+    },
+    {
+      "id": "2810121",
+      "name": "IU",
+      "collectionGroups": []
+    },
+    {
+      "id": "6839351",
+      "name": "Hyukoh",
+      "collectionGroups": []
+    },
+    {
+      "id": "10803980",
+      "name": "BLACKPINK",
+      "collectionGroups": []
+    },
+    {
+      "id": "2907",
+      "name": "Nusrat Fateh Ali Khan",
+      "collectionGroups": []
+    },
+    {
+      "id": "294102581",
+      "name": "Anoushka Shankar",
+      "collectionGroups": []
+    },
+    {
+      "id": "203",
+      "name": "Youssou N'Dour",
+      "collectionGroups": []
+    },
+    {
+      "id": "8209",
+      "name": "Tinariwen",
+      "collectionGroups": []
+    },
+    {
+      "id": "4086",
+      "name": "Cesária Evora",
+      "collectionGroups": []
+    },
+    {
+      "id": "1417",
+      "name": "Sigur Rós",
+      "collectionGroups": []
+    },
+    {
+      "id": "2799",
+      "name": "Buena Vista Social Club",
+      "collectionGroups": []
+    },
+    {
+      "id": "630",
+      "name": "Björk",
+      "collectionGroups": []
+    },
+    {
+      "id": "2449",
+      "name": "John Coltrane",
+      "collectionGroups": [
+        "jazz"
+      ]
+    },
+    {
+      "id": "1910",
+      "name": "Miles Davis",
+      "collectionGroups": [
+        "jazz"
+      ]
+    },
+    {
+      "id": "2060",
+      "name": "Bill Evans",
+      "collectionGroups": [
+        "jazz"
+      ]
+    },
+    {
+      "id": "744",
+      "name": "Nina Simone",
+      "collectionGroups": [
+        "jazz"
+      ]
+    },
+    {
+      "id": "3280",
+      "name": "Ella Fitzgerald",
+      "collectionGroups": [
+        "jazz"
+      ]
+    },
+    {
+      "id": "1036",
+      "name": "Billie Holiday",
+      "collectionGroups": [
+        "jazz"
+      ]
+    },
+    {
+      "id": "5853",
+      "name": "Chet Baker",
+      "collectionGroups": [
+        "jazz"
+      ]
+    },
+    {
+      "id": "5136",
+      "name": "Thelonious Monk",
+      "collectionGroups": [
+        "jazz"
+      ]
+    },
+    {
+      "id": "5123",
+      "name": "Charles Mingus",
+      "collectionGroups": [
+        "jazz"
+      ]
+    },
+    {
+      "id": "5145",
+      "name": "Alice Coltrane",
+      "collectionGroups": [
+        "jazz"
+      ]
+    },
+    {
+      "id": "5999",
+      "name": "Pharoah Sanders",
+      "collectionGroups": [
+        "jazz"
+      ]
+    },
+    {
+      "id": "58960",
+      "name": "Yo-Yo Ma",
+      "collectionGroups": [
+        "classical-contemporary"
+      ]
+    },
+    {
+      "id": "152366",
+      "name": "Lang Lang",
+      "collectionGroups": [
+        "classical-contemporary"
+      ]
+    },
+    {
+      "id": "72019",
+      "name": "Martha Argerich",
+      "collectionGroups": [
+        "classical-contemporary"
+      ]
+    },
+    {
+      "id": "58962",
+      "name": "Glenn Gould",
+      "collectionGroups": [
+        "classical-contemporary"
+      ]
+    },
+    {
+      "id": "70067",
+      "name": "Hilary Hahn",
+      "collectionGroups": [
+        "classical-contemporary"
+      ]
+    },
+    {
+      "id": "1613",
+      "name": "Arvo Pärt",
+      "collectionGroups": [
+        "classical-contemporary"
+      ]
+    },
+    {
+      "id": "268318922",
+      "name": "Max Richter",
+      "collectionGroups": [
+        "classical-contemporary"
+      ]
+    },
+    {
+      "id": "277491",
+      "name": "Ólafur Arnalds",
+      "collectionGroups": [
+        "classical-contemporary"
+      ]
+    },
+    {
+      "id": "12566278",
+      "name": "Hania Rani",
+      "collectionGroups": [
+        "classical-contemporary"
+      ]
+    },
+    {
+      "id": "11",
+      "name": "The Rolling Stones",
+      "collectionGroups": [
+        "rock"
+      ]
+    },
+    {
+      "id": "848",
+      "name": "Led Zeppelin",
+      "collectionGroups": [
+        "rock"
+      ]
+    },
+    {
+      "id": "860",
+      "name": "Pink Floyd",
+      "collectionGroups": [
+        "rock"
+      ]
+    },
+    {
+      "id": "997",
+      "name": "David Bowie",
+      "collectionGroups": [
+        "rock"
+      ]
+    },
+    {
+      "id": "129",
+      "name": "R.E.M.",
+      "collectionGroups": [
+        "rock"
+      ]
+    },
+    {
+      "id": "381",
+      "name": "The Cure",
+      "collectionGroups": [
+        "rock"
+      ]
+    },
+    {
+      "id": "1297",
+      "name": "The Smiths",
+      "collectionGroups": [
+        "rock"
+      ]
+    },
+    {
+      "id": "2731",
+      "name": "The Stone Roses",
+      "collectionGroups": [
+        "rock"
+      ]
+    },
+    {
+      "id": "181",
+      "name": "Talking Heads",
+      "collectionGroups": [
+        "rock"
+      ]
+    },
+    {
+      "id": "75055",
+      "name": "Beach House",
+      "collectionGroups": [
+        "indie"
+      ]
+    },
+    {
+      "id": "1041",
+      "name": "Cocteau Twins",
+      "collectionGroups": [
+        "indie"
+      ]
+    },
+    {
+      "id": "2021",
+      "name": "Slowdive",
+      "collectionGroups": [
+        "indie"
+      ]
+    },
+    {
+      "id": "1999",
+      "name": "Sufjan Stevens",
+      "collectionGroups": [
+        "indie"
+      ]
+    },
+    {
+      "id": "9829340",
+      "name": "Big Thief",
+      "collectionGroups": [
+        "indie"
+      ]
+    },
+    {
+      "id": "1058631",
+      "name": "Phoebe Bridgers",
+      "collectionGroups": [
+        "indie"
+      ]
+    },
+    {
+      "id": "74444",
+      "name": "Fleet Foxes",
+      "collectionGroups": [
+        "indie"
+      ]
+    },
+    {
+      "id": "78668",
+      "name": "Bon Iver",
+      "collectionGroups": [
+        "indie"
+      ]
+    },
+    {
+      "id": "2062",
+      "name": "Nick Drake",
+      "collectionGroups": [
+        "indie"
+      ]
+    },
+    {
+      "id": "1023",
+      "name": "Elliott Smith",
+      "collectionGroups": [
+        "indie"
+      ]
+    },
+    {
+      "id": "580",
+      "name": "Aphex Twin",
+      "collectionGroups": [
+        "electronic"
+      ]
+    },
+    {
+      "id": "6374",
+      "name": "Autechre",
+      "collectionGroups": [
+        "electronic"
+      ]
+    },
+    {
+      "id": "1098",
+      "name": "Boards of Canada",
+      "collectionGroups": [
+        "electronic"
+      ]
+    },
+    {
+      "id": "71690712",
+      "name": "Burial",
+      "collectionGroups": [
+        "electronic"
+      ]
+    },
+    {
+      "id": "1744",
+      "name": "Four Tet",
+      "collectionGroups": [
+        "electronic"
+      ]
+    },
+    {
+      "id": "258846",
+      "name": "Jon Hopkins",
+      "collectionGroups": [
+        "electronic"
+      ]
+    },
+    {
+      "id": "294359",
+      "name": "Nicolas Jaar",
+      "collectionGroups": [
+        "electronic"
+      ]
+    },
+    {
+      "id": "336440",
+      "name": "Floating Points",
+      "collectionGroups": [
+        "electronic"
+      ]
+    },
+    {
+      "id": "926",
+      "name": "Kraftwerk",
+      "collectionGroups": [
+        "electronic"
+      ]
+    },
+    {
+      "id": "27",
+      "name": "Daft Punk",
+      "collectionGroups": [
+        "electronic"
+      ]
+    },
+    {
+      "id": "6302254",
+      "name": "N.A.S",
+      "collectionGroups": [
+        "hip-hop"
+      ]
+    },
+    {
+      "id": "1862",
+      "name": "A Tribe Called Quest",
+      "collectionGroups": [
+        "hip-hop"
+      ]
+    },
+    {
+      "id": "2857",
+      "name": "MF DOOM",
+      "collectionGroups": [
+        "hip-hop"
+      ]
+    },
+    {
+      "id": "9",
+      "name": "Outkast",
+      "collectionGroups": [
+        "hip-hop"
+      ]
+    },
+    {
+      "id": "4064",
+      "name": "J Dilla",
+      "collectionGroups": [
+        "hip-hop"
+      ]
+    },
+    {
+      "id": "135934082",
+      "name": "De La Soul",
+      "collectionGroups": [
+        "hip-hop"
+      ]
+    },
+    {
+      "id": "5004",
+      "name": "D'Angelo",
+      "collectionGroups": [
+        "soul-rnb"
+      ]
+    },
+    {
+      "id": "2056",
+      "name": "Erykah Badu",
+      "collectionGroups": [
+        "soul-rnb"
+      ]
+    },
+    {
+      "id": "202",
+      "name": "Sade",
+      "collectionGroups": [
+        "soul-rnb"
+      ]
+    },
+    {
+      "id": "1350335",
+      "name": "Frank Ocean",
+      "collectionGroups": [
+        "soul-rnb"
+      ]
+    },
+    {
+      "id": "8795060",
+      "name": "Solange",
+      "collectionGroups": [
+        "soul-rnb"
+      ]
+    },
+    {
+      "id": "127408692",
+      "name": "Lauryn Hill",
+      "collectionGroups": [
+        "soul-rnb"
+      ]
+    },
+    {
+      "id": "1154",
+      "name": "Marvin Gaye",
+      "collectionGroups": [
+        "soul-rnb"
+      ]
+    },
+    {
+      "id": "166",
+      "name": "Stevie Wonder",
+      "collectionGroups": [
+        "soul-rnb"
+      ]
+    },
+    {
+      "id": "2027",
+      "name": "Curtis Mayfield",
+      "collectionGroups": [
+        "soul-rnb"
+      ]
+    },
+    {
+      "id": "2059",
+      "name": "Aretha Franklin",
+      "collectionGroups": [
+        "soul-rnb"
+      ]
+    },
+    {
+      "id": "647",
+      "name": "Black Sabbath",
+      "collectionGroups": [
+        "metal"
+      ]
+    },
+    {
+      "id": "931",
+      "name": "Iron Maiden",
+      "collectionGroups": [
+        "metal"
+      ]
+    },
+    {
+      "id": "119",
+      "name": "Metallica",
+      "collectionGroups": [
+        "metal"
+      ]
+    },
+    {
+      "id": "2814",
+      "name": "Opeth",
+      "collectionGroups": [
+        "metal"
+      ]
+    },
+    {
+      "id": "689",
+      "name": "TOOL",
+      "collectionGroups": [
+        "metal"
+      ]
+    },
+    {
+      "id": "3283",
+      "name": "Joni Mitchell",
+      "collectionGroups": [
+        "folk-country"
+      ]
+    },
+    {
+      "id": "1834",
+      "name": "Leonard Cohen",
+      "collectionGroups": [
+        "folk-country"
+      ]
+    },
+    {
+      "id": "268008682",
+      "name": "Joan Baez",
+      "collectionGroups": [
+        "folk-country"
+      ]
+    },
+    {
+      "id": "8741",
+      "name": "Dolly Parton",
+      "collectionGroups": [
+        "folk-country"
+      ]
+    },
+    {
+      "id": "405",
+      "name": "Johnny Cash",
+      "collectionGroups": [
+        "folk-country"
+      ]
+    },
+    {
+      "id": "2947",
+      "name": "Willie Nelson",
+      "collectionGroups": [
+        "folk-country"
+      ]
+    },
+    {
+      "id": "3545",
+      "name": "Emmylou Harris",
+      "collectionGroups": [
+        "folk-country"
+      ]
+    },
+    {
+      "id": "6980",
+      "name": "Gillian Welch",
+      "collectionGroups": [
+        "folk-country"
+      ]
+    },
+    {
+      "id": "719",
+      "name": "Bob Marley & The Wailers",
+      "collectionGroups": [
+        "reggae"
+      ]
+    },
+    {
+      "id": "2326",
+      "name": "Peter Tosh",
+      "collectionGroups": [
+        "reggae"
+      ]
+    },
+    {
+      "id": "379831511",
+      "name": "Jimmy Cliff",
+      "collectionGroups": [
+        "reggae"
+      ]
+    },
+    {
+      "id": "2325",
+      "name": "Burning Spear",
+      "collectionGroups": [
+        "reggae"
+      ]
+    },
+    {
+      "id": "5871",
+      "name": "Toots & The Maytals",
+      "collectionGroups": [
+        "reggae"
+      ]
+    },
+    {
+      "id": "2322",
+      "name": "Groundation",
+      "collectionGroups": [
+        "reggae"
+      ]
+    },
+    {
+      "id": "232",
+      "name": "Caetano Veloso",
+      "collectionGroups": [
+        "brazil-latin"
+      ]
+    },
+    {
+      "id": "2077",
+      "name": "Gilberto Gil",
+      "collectionGroups": [
+        "brazil-latin"
+      ]
+    },
+    {
+      "id": "6542",
+      "name": "Steel Pulse",
+      "collectionGroups": [
+        "reggae"
+      ]
+    },
+    {
+      "id": "5168",
+      "name": "João Gilberto",
+      "collectionGroups": [
+        "brazil-latin"
+      ]
+    },
+    {
+      "id": "12038",
+      "name": "Gal Costa",
+      "collectionGroups": [
+        "brazil-latin"
+      ]
+    },
+    {
+      "id": "15827",
+      "name": "Elis Regina",
+      "collectionGroups": [
+        "brazil-latin"
+      ]
+    },
+    {
+      "id": "4917",
+      "name": "Jorge Ben Jor",
+      "collectionGroups": [
+        "brazil-latin"
+      ]
+    },
+    {
+      "id": "1918",
+      "name": "Bebel Gilberto",
+      "collectionGroups": [
+        "brazil-latin"
+      ]
+    },
+    {
+      "id": "5024",
+      "name": "Celia Cruz",
+      "collectionGroups": [
+        "brazil-latin"
+      ]
+    },
+    {
+      "id": "87910562",
+      "name": "Ruben Blades",
+      "collectionGroups": [
+        "brazil-latin"
+      ]
+    },
+    {
+      "id": "68821062",
+      "name": "Astor Piazzolla",
+      "collectionGroups": [
+        "brazil-latin"
+      ]
+    },
+    {
+      "id": "412389541",
+      "name": "Fela Kuti",
+      "collectionGroups": [
+        "africa-world"
+      ]
+    },
+    {
+      "id": "1404",
+      "name": "Ali Farka Toure",
+      "collectionGroups": [
+        "africa-world"
+      ]
+    },
+    {
+      "id": "15929",
+      "name": "Oumou Sangaré",
+      "collectionGroups": [
+        "africa-world"
+      ]
+    },
+    {
+      "id": "6165",
+      "name": "Angélique Kidjo",
+      "collectionGroups": [
+        "africa-world"
+      ]
+    },
+    {
+      "id": "1399",
+      "name": "Salif Keita",
+      "collectionGroups": [
+        "africa-world"
+      ]
+    },
+    {
+      "id": "88560",
+      "name": "Mulatu Astatke",
+      "collectionGroups": [
+        "africa-world"
+      ]
+    },
+    {
+      "id": "789",
+      "name": "Rokia Traoré",
+      "collectionGroups": [
+        "africa-world"
+      ]
+    },
+    {
+      "id": "640",
+      "name": "Goran Bregović",
+      "collectionGroups": [
+        "africa-world"
+      ]
+    },
+    {
+      "id": "6",
+      "name": "Manu Chao",
+      "collectionGroups": [
+        "africa-world"
+      ]
+    },
+    {
+      "id": "5186139",
+      "name": "Stefanie Sun",
+      "collectionGroups": [
+        "mandarin-cantonese"
+      ]
+    },
+    {
+      "id": "67166",
+      "name": "Tanya Chua",
+      "collectionGroups": [
+        "mandarin-cantonese"
+      ]
+    },
+    {
+      "id": "240672",
+      "name": "Sandy Lam",
+      "collectionGroups": [
+        "mandarin-cantonese"
+      ]
+    },
+    {
+      "id": "78658",
+      "name": "Jacky Cheung",
+      "collectionGroups": [
+        "mandarin-cantonese"
+      ]
+    },
+    {
+      "id": "79503",
+      "name": "Leslie Cheung",
+      "collectionGroups": [
+        "mandarin-cantonese"
+      ]
+    },
+    {
+      "id": "432122",
+      "name": "Jonathan Lee",
+      "collectionGroups": [
+        "mandarin-cantonese"
+      ]
+    },
+    {
+      "id": "4679933",
+      "name": "Crowd Lu",
+      "collectionGroups": [
+        "mandarin-cantonese"
+      ]
+    },
+    {
+      "id": "4784381",
+      "name": "Waa Wei",
+      "collectionGroups": [
+        "mandarin-cantonese"
+      ]
+    },
+    {
+      "id": "14755359",
+      "name": "Sunset Rollercoaster",
+      "collectionGroups": [
+        "mandarin-cantonese"
+      ]
+    },
+    {
+      "id": "12591176",
+      "name": "Deca Joins",
+      "collectionGroups": [
+        "mandarin-cantonese"
+      ]
+    },
+    {
+      "id": "4623828",
+      "name": "万能青年旅店",
+      "collectionGroups": [
+        "mandarin-cantonese"
+      ]
+    },
+    {
+      "id": "9336781",
+      "name": "新裤子",
+      "collectionGroups": [
+        "mandarin-cantonese"
+      ]
+    },
+    {
+      "id": "6627214",
+      "name": "朴树",
+      "collectionGroups": [
+        "mandarin-cantonese"
+      ]
+    },
+    {
+      "id": "6573981",
+      "name": "陈绮贞",
+      "collectionGroups": [
+        "mandarin-cantonese"
+      ]
+    },
+    {
+      "id": "5088",
+      "name": "Yellow Magic Orchestra",
+      "collectionGroups": [
+        "japan-korea"
+      ]
+    },
+    {
+      "id": "13628349",
+      "name": "Fishmans",
+      "collectionGroups": [
+        "japan-korea"
+      ]
+    },
+    {
+      "id": "393304611",
+      "name": "Cornelius",
+      "collectionGroups": [
+        "japan-korea"
+      ]
+    },
+    {
+      "id": "96838",
+      "name": "toe",
+      "collectionGroups": [
+        "japan-korea"
+      ]
+    },
+    {
+      "id": "14203655",
+      "name": "Haru Nemuri",
+      "collectionGroups": [
+        "japan-korea"
+      ]
+    },
+    {
+      "id": "6630050",
+      "name": "Mitski",
+      "collectionGroups": [
+        "japan-korea"
+      ]
+    },
+    {
+      "id": "4845871",
+      "name": "L.A.M.P",
+      "collectionGroups": [
+        "japan-korea"
+      ]
+    },
+    {
+      "id": "9197006",
+      "name": "AKMU",
+      "collectionGroups": [
+        "japan-korea"
+      ]
+    },
+    {
+      "id": "14914065",
+      "name": "SE SO NEON",
+      "collectionGroups": [
+        "japan-korea"
+      ]
+    },
+    {
+      "id": "130058152",
+      "name": "Parannoul",
+      "collectionGroups": [
+        "japan-korea"
+      ]
+    },
+    {
+      "id": "491",
+      "name": "A.R. Rahman",
+      "collectionGroups": [
+        "south-asia-middle-east"
+      ]
+    },
+    {
+      "id": "10587",
+      "name": "Lata Mangeshkar",
+      "collectionGroups": [
+        "south-asia-middle-east"
+      ]
+    },
+    {
+      "id": "73805",
+      "name": "Asha Bhosle",
+      "collectionGroups": [
+        "south-asia-middle-east"
+      ]
+    },
+    {
+      "id": "3830821",
+      "name": "Arijit Singh",
+      "collectionGroups": [
+        "south-asia-middle-east"
+      ]
+    },
+    {
+      "id": "2033",
+      "name": "Ravi Shankar",
+      "collectionGroups": [
+        "south-asia-middle-east"
+      ]
+    },
+    {
+      "id": "70864742",
+      "name": "Fairuz",
+      "collectionGroups": [
+        "south-asia-middle-east"
+      ]
+    },
+    {
+      "id": "353454",
+      "name": "Dhafer Youssef",
+      "collectionGroups": [
+        "south-asia-middle-east"
+      ]
+    }
+  ],
+  "collectionGroupsMeaning": "Human-curated discovery/search route labels. They are not official song, album, or artist genre labels. Union across the requested artist that returned the track and its primary artist.",
+  "excludedPaths": [
+    "/genre/{id}/artists"
+  ],
+  "excludedPathsReason": "All 27 /genre/{id}/artists?limit=100 endpoints returned the identical ordered 50 artist IDs, including unrelated global pop artists for Jazz/Classical/Asian Music. All inferred genre tags were discarded.",
+  "limitations": [
+    "Deduplicated by Deezer track ID only; remasters/live versions/compilations can represent the same composition.",
+    "artistGenres is intentionally empty for every record because public genre-to-artist responses were found unreliable in this run.",
+    "Curated discovery categories describe the researcher's search routes, not verified artist/track/album genre labels; they appear only in provenance/statistics.",
+    "Artist top endpoints favor popular recordings. This is a bounded multi-artist catalog snapshot, not the global music catalog or a representative random sample.",
+    "popularity is raw Deezer rank and is not a quality/personal-preference score.",
+    "previewAvailable is URL presence at collection time. Audio was never downloaded; preview URLs were stripped from stored response bodies and final records.",
+    "No lyrics, inferred listening descriptors, synthetic recommendations, account access, or paid model calls were used.",
+    "Official track URL is supplied by the API or constructed from its stable provider ID when omitted by top endpoint.",
+    "Three potentially in-flight interrupted requests are included conservatively in the request upper bound."
+  ]
+}

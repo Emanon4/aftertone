@@ -1,7 +1,7 @@
 import { applyExplicitFilters } from "@/lib/server/filters";
 import { env } from "cloudflare:workers";
 import { getChatGPTUser } from "@/app/chatgpt-auth";
-import { getTrack, recall } from "@/lib/server/catalog";
+import { getTrack, recall, libraryStats } from "@/lib/server/catalog";
 import { rankWithJev, type Direction } from "@/lib/server/recommend";
 export async function POST(req:Request){
  const origin=req.headers.get("origin");if(origin&&origin!==new URL(req.url).origin)return Response.json({error:"请求来源无效。"},{status:403});
@@ -14,14 +14,14 @@ export async function POST(req:Request){
  const feedback={liked:[],disliked:[]} as {liked:string[];disliked:string[]};
  for(const k of ["liked","disliked"] as const){const values=body.feedback?.[k];if(Array.isArray(values))feedback[k]=values.filter((x:unknown)=>typeof x==="string").slice(0,8).map((x:string)=>x.slice(0,140));}
  try{
-  const seed=await getTrack(body.seed.id,body.seed.provider);const recalled=await recall(seed,body.excluded,body.direction);
+  const seed=await getTrack(body.seed.id,body.seed.provider);const recalled=await recall(seed,body.excluded,body.direction,req.url);
   recalled.candidates=applyExplicitFilters(recalled.candidates,body.notes);
-  if(!recalled.candidates.length)return Response.json({tracks:[],candidateCount:0,elapsedMs:0,engine:"constraints",model:"",requestCount:0});
+  if(!recalled.candidates.length)return Response.json({tracks:[],candidateCount:0,libraryCount:libraryStats.tracks,elapsedMs:0,engine:"constraints",model:"",requestCount:0});
   if(!runtime.DB)throw new Error("筛选额度服务暂不可用，请稍后再试。");
   const day=new Date().toISOString().slice(0,10);
   const budget=await runtime.DB.prepare("INSERT INTO daily_budget(day,count) VALUES (?,1) ON CONFLICT(day) DO UPDATE SET count=count+1 WHERE count<30 RETURNING count").bind(day).first<{count:number}>();
   if(!budget)return Response.json({error:"今天的 30 轮智能找歌已用完。你仍然可以试听和收藏，明天再继续。"},{status:429});
   const started=Date.now();const result=await rankWithJev(recalled.seed,recalled.candidates,body.direction as Direction,body.notes.trim(),key,feedback);
-  return Response.json({...result,elapsedMs:Date.now()-started,remaining:30-budget.count},{headers:{"Cache-Control":"no-store"}});
+  return Response.json({...result,libraryCount:libraryStats.tracks,elapsedMs:Date.now()-started,remaining:30-budget.count},{headers:{"Cache-Control":"no-store"}});
  }catch(e){return Response.json({error:e instanceof Error?e.message:"这一轮暂时没有完成，请稍后重试。"},{status:502});}
 }

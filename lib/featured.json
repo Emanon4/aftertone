@@ -70,5 +70,17 @@
     "image": "https://cdn-images.dzcdn.net/images/cover/7072c41c8a9c6d6557d57f5670e9a154/500x500-000000-80-0-0.jpg",
     "url": "https://www.deezer.com/track/499360512",
     "duration": 315
+  },
+  {
+    "id": "1030652052",
+    "provider": "deezer",
+    "title": "Kiss of Life",
+    "artist": "Sade",
+    "artistId": "202",
+    "album": "The Best of Sade",
+    "albumId": "162472242",
+    "image": "https://cdn-images.dzcdn.net/images/cover/336e00b554c028d58b7c432c38581997/500x500-000000-80-0-0.jpg",
+    "url": "https://www.deezer.com/track/1030652052",
+    "duration": 250
   }
 ]

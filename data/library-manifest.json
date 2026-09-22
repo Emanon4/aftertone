@@ -1,0 +1,30 @@
+{
+  "collectedAt": "2026-09-22T15:42:38.121Z",
+  "tracks": 5163,
+  "artists": 403,
+  "previewable": 5163,
+  "collectionGroups": [
+    "africa-world",
+    "brazil-latin",
+    "classical-contemporary",
+    "electronic",
+    "folk-country",
+    "hip-hop",
+    "indie",
+    "japan-korea",
+    "jazz",
+    "mandarin-cantonese",
+    "metal",
+    "reggae",
+    "rock",
+    "soul-rnb",
+    "south-asia-middle-east"
+  ],
+  "source": "Deezer artist top endpoints, artist identity checked using search/artist",
+  "grouping": "Human-curated artist discovery paths, not provider track genres",
+  "limitations": [
+    "A snapshot concentrated on artist top tracks, not a complete global catalog.",
+    "Preview availability is a collection-time observation. Playback resolves a fresh provider URL.",
+    "No audio files or signed preview URLs are stored."
+  ]
+}
