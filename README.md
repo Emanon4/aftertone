@@ -1,6 +1,25 @@
 # 余音 · Aftertone
 
-**下一首，你的单曲循环。** 从一首喜欢的歌出发，用 Jev 辅助筛选真实歌曲，七首一组发现和试听。
+**下一首，你的单曲循环。**
+
+余音是一个开源的音乐发现网站。给它一首你喜欢的歌，让 Jev 从真实曲库召回的候选中辅助筛选，再用七首歌给你一个新的听歌起点。你可以试听、收藏，也可以选择常用的官方音乐平台听完整首。
+
+[打开网站](https://emanon4.github.io/aftertone-pages/) · [GitHub 源码](https://github.com/Emanon4/aftertone) · [隐私与数据说明](PRIVACY.md) · [验证记录](VERIFICATION.md)
+
+## 项目介绍
+
+世界上有很多好歌，逐首碰运气需要时间。余音想做的是：从你已经喜欢的声音出发，把需要亲自试听的范围缩小，让下一次偶遇更有方向。
+
+| 能做什么 | 当前实现 |
+| --- | --- |
+| 从一首歌出发 | 搜索喜欢的录音版本，选择相近、侧向或更大胆的探索方向 |
+| 有规模的筛选 | 索引 145,548 首；每轮最多 5,000 首真实候选，展示实际评分数量 |
+| 七首一组发现 | 试听片段、收藏、不太合适反馈，以及沿着某首继续探索 |
+| 选择自己的平台 | 网易云、QQ 音乐、Spotify、Apple Music、YouTube Music、Deezer |
+| 选择自己的模型 | 站点 Jev、个人 Jev Key，或四个官方 OpenAI 兼容服务模板 |
+| 玻璃听音室 | 默认暖黑背景，保留橙红 Logo；支持浅色模式与手机布局 |
+
+Jev 根据歌曲资料和偏好评分，当前实现不分析音频。“好听”仍由你的试听判断；站内提供短试听，完整歌曲由官方平台播放。兼容模型的真实服务调用验证范围见下文。
 
 ## 网站与架构
 
@@ -85,7 +104,7 @@ npx wrangler deploy --dry-run --config wrangler.api.jsonc
 
 生产 Worker 已部署至 `https://aftertone-api.moji-pet.workers.dev`；D1 数据库已绑定，`0001` 与 `0002` 两次远端迁移已应用。`/api/library` 返回 `available: true` 和 `byokAvailable: true`，搜索、曲目详情及创建后取消任务已通过生产检查。GitHub Pages 已接入生产 API，公开网页实测搜索与短试听成功。
 
-后续部署命令如下；已有数据库无需重建，迁移命令只应用待执行的迁移，站点 secret 只在首次配置或轮换时写入：
+自行部署时，先创建自己的 D1 数据库，将 ID 填入 `wrangler.api.jsonc`，并把 `worker/index.ts` 中的 `ALLOWED_ORIGIN` 改为你的前端来源。已有数据库无需重建；迁移命令只应用待执行的迁移，站点 secret 只在首次配置或轮换时写入：
 
 ```sh
 npx wrangler d1 migrations apply DB --remote --config wrangler.api.jsonc
