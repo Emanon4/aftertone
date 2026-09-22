@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "startedAt": "2026-09-22T16:12:51.391Z",
+  "finishedAt": "2026-09-22T16:13:05.376Z",
+  "status": "complete",
+  "evidence": "metadata-only; no audio input; no extrapolation; one fit question per candidate",
+  "parameters": {
+    "count": 5000,
+    "batchSize": 128,
+    "concurrency": 4,
+    "direction": "sideways",
+    "notes": "",
+    "modelRequested": "jev-latest",
+    "automaticRetries": 0
+  },
+  "wallMs": 13974,
+  "requestCount": 40,
+  "actualScoredCount": 5000,
+  "failedRequestCount": 0,
+  "usage": {
+    "input_tokens": 1636227,
+    "output_tokens": 128691
+  },
+  "usageComplete": true,
+  "models": [
+    "jev-1.13.0"
+  ],
+  "limitations": [
+    "One run is not a latency distribution across days.",
+    "Measures complete API scoring of catalog text, not auditory recommendation quality.",
+    "No monetary cost estimate.",
+    "Unknown or sparse metadata remains unknown; no genre, emotion or audio feature is fabricated."
+  ],
+  "source": {
+    "sha256": "f130d2414d749839027e3ed26819a848ff02c8560b229925c1b33ef39752361e",
+    "libraryCount": 5163,
+    "uniqueAvailableExcludingSeed": 5162,
+    "candidateSelection": "Stable SHA-256 ordering; exclude seed and duplicate provider/id or normalized artist/title",
+    "candidateIdsSha256": "5eb2f3c5590d14945aef25a79f9fbc442d17b9af4caf986cdfcbbe80060e3456"
+  },
+  "batchMeanMs": 1332,
+  "batchP95Ms": 2346
+}

@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """Rebuild a bounded public Deezer metadata index from verified artist IDs.
 
-Usage: python3 scripts/rebuild-library.py --manifest data/catalog-manifest.json --output output/rebuilt-catalog
+Usage: python3 rebuild_catalog.py --manifest catalog-manifest.json --output ./catalog
 Only /artist/{id}/top is called. No genre endpoints, audio, account, or paid model.
 """
 import argparse
 import concurrent.futures
 import datetime
+import email.utils
 import json
 from pathlib import Path
 import threading
@@ -19,10 +20,25 @@ def utcnow():
     return datetime.datetime.now(datetime.timezone.utc).isoformat()
 
 
+def retry_after_seconds(value, fallback):
+    value = (value or "").strip()
+    if value.isdigit():
+        return float(value)
+    if value:
+        try:
+            until = email.utils.parsedate_to_datetime(value)
+            if until.tzinfo is None:
+                until = until.replace(tzinfo=datetime.timezone.utc)
+            return max(0.0, (until - datetime.datetime.now(datetime.timezone.utc)).total_seconds())
+        except (TypeError, ValueError, OverflowError):
+            pass
+    return fallback
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--manifest", type=Path, default=Path(__file__).resolve().parent.parent / "data/catalog-manifest.json")
-    parser.add_argument("--output", type=Path, default=Path(__file__).resolve().parent.parent / "output/rebuilt-catalog")
+    parser.add_argument("--manifest", type=Path, default=Path(__file__).with_name("catalog-manifest.json"))
+    parser.add_argument("--output", type=Path, default=Path(__file__).with_name("rebuilt-catalog"))
     args = parser.parse_args()
     manifest = json.loads(args.manifest.read_text())
     args.output.mkdir(parents=True, exist_ok=True)
@@ -30,19 +46,26 @@ def main():
     ids = list(dict.fromkeys(str(x) for x in manifest["collectArtistIds"]))
     if not all(x.isdigit() for x in ids):
         raise ValueError("Manifest artist IDs must be decimal Deezer IDs")
-    limit = min(50, max(1, int(manifest.get("tracksPerArtist", 35))))
-    request_cap = min(450, int(manifest.get("requestLimit", 450)))
+    limit = min(100, max(1, int(manifest.get("tracksPerArtist", 100))))
+    request_cap = min(3000, int(manifest.get("requestLimit", 3000)))
     if len(ids) > request_cap:
         raise ValueError("Artist list exceeds the bounded request budget")
     started = utcnow()
     lock = threading.Lock()
     requests, errors, records, provenance = [], [], {}, {}
     request_count = 0
+    next_allowed_at = 0.0
 
     def fetch(aid):
-        nonlocal request_count
+        nonlocal request_count, next_allowed_at
         url = f"https://api.deezer.com/artist/{aid}/top?limit={limit}"
         for attempt in range(1, 4):
+            while True:
+                with lock:
+                    delay = next_allowed_at - time.monotonic()
+                if delay <= 0:
+                    break
+                time.sleep(min(delay, 10))
             with lock:
                 if request_count >= request_cap:
                     raise RuntimeError("Request budget exhausted")
@@ -50,24 +73,33 @@ def main():
                 number = request_count
             entry = {"request": number, "artistId": aid, "url": url, "attempt": attempt, "at": utcnow()}
             retry_delay = 0
+            cooldown_delay = 0
             try:
-                req = urllib.request.Request(url, headers={"User-Agent": "AftertoneCatalogRebuild/1.0", "Accept": "application/json"})
+                req = urllib.request.Request(url, headers={"User-Agent": "AftertoneCatalogRebuild/2.0", "Accept": "application/json"})
                 with urllib.request.urlopen(req, timeout=25) as response:
                     entry["status"] = response.status
                     payload = json.load(response)
                 if payload.get("error"):
                     entry["error"] = payload["error"]
-                    if payload["error"].get("code") in (4, 429) and attempt < 3:
-                        retry_delay = 5 * 2 ** (attempt - 1)
+                    if payload["error"].get("code") in (4, 429):
+                        cooldown_delay = 5 * 2 ** (attempt - 1)
+                        if attempt < 3:
+                            retry_delay = cooldown_delay
+                        else:
+                            raise ValueError(str(payload["error"]))
                     else:
                         raise ValueError(str(payload["error"]))
                 if not retry_delay:
                     return payload.get("data", []), url, entry["at"]
             except urllib.error.HTTPError as error:
                 entry.update(status=error.code, error=str(error))
-                if error.code in (429, 503) and attempt < 3:
+                if error.code in (429, 503):
                     retry_after = error.headers.get("Retry-After", "")
-                    retry_delay = min(45, float(retry_after) if retry_after.isdigit() else 5 * 2 ** (attempt - 1))
+                    cooldown_delay = retry_after_seconds(retry_after, 5 * 2 ** (attempt - 1))
+                    if attempt < 3:
+                        retry_delay = max(0.001, cooldown_delay)
+                    else:
+                        raise
                 else:
                     raise
             except (TimeoutError, urllib.error.URLError) as error:
@@ -79,10 +111,9 @@ def main():
             finally:
                 with lock:
                     requests.append(entry)
-            if retry_delay:
-                time.sleep(retry_delay)
+                    next_allowed_at = max(next_allowed_at, time.monotonic() + max(cooldown_delay, retry_delay))
 
-    workers = min(3, max(1, int(manifest.get("concurrency", 3))))
+    workers = min(4, max(1, int(manifest.get("concurrency", 4))))
     with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
         futures = {pool.submit(fetch, aid): aid for aid in ids}
         for done, future in enumerate(concurrent.futures.as_completed(futures), 1):

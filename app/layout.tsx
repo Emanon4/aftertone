@@ -5,8 +5,8 @@ export const metadata: Metadata = {
   title: "余音 Aftertone — 下一首，你的单曲循环。",
   description: "从一首喜欢的歌出发，发现下一首会留下来的声音。",
   icons: {
-    icon: "/favicon.svg",
-    shortcut: "/favicon.svg",
+    icon: "/favicon.svg?v=original-3",
+    shortcut: "/favicon.svg?v=original-3",
   },
 };
 

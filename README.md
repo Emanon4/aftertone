@@ -1,71 +1,79 @@
 # 余音 · Aftertone
 
-从一首喜欢的歌出发，找到下一首心头好。一个使用 Jev 辅助筛选的音乐发现网站。
+**下一首，你的单曲循环。** 从一首喜欢的歌出发，用 Jev 辅助筛选真实歌曲，七首一组发现和试听。
 
-## 已实现
+## 网站与架构
 
-- 歌名 / 歌手搜索，真实专辑封面，Deezer 曲库与 iTunes 华语搜索补充。
-- 选择一首歌作为起点，结合本地歌曲索引、艺术家电台与关联艺术家召回最多 200 首。
-- Jev 分批评价资料与偏好匹配，每批最多 16 首，每轮最多 13 批，始终最多 3 个并行请求；完整校验评分，失败不伪造或部分返回推荐。
-- 七首一组试听；三种探索方向；换一首作为起点继续找；收藏及“不太合适”反馈。
-- 收藏和反馈存于当前浏览器；试听采用提供方即时 URL，不下载或缓存音频；支持暂停、进度、音量及官方完整歌曲链接。
-- ChatGPT 身份验证保护付费接口；D1 原子计数限制全站每 UTC 日 30 轮 Jev 筛选；无自动重试。
+- 公开前端：[GitHub Pages](https://emanon4.github.io/aftertone-pages/)，发布仓库只保存静态构建产物。
+- 当前公开版本为听音室预览，可以收藏并打开音乐平台；独立 API 尚待 Cloudflare 账户登录后部署，线上智能找歌和站内试听尚未连接。
+- 新前端使用 Vite + React；独立 API 使用 Cloudflare Worker + D1。Jev 密钥只放 Worker secret。
+- 原私有 Sites 部署不是本轮发布目标。旧 Sites 相关源文件保留作历史迁移参考，不参与新的前端或 Worker 构建。
 
-## 曲库
+## 曲库与筛选
 
-当前索引包含 **5,163 首歌曲、403 个艺人署名**，采集于 2026-09-22。源采集得到 5,235 个 Deezer ID，进一步按艺人及标准化曲名去重。15 个策展集合包括华语/粤语、日韩、爵士、电子、摇滚等检索路径；`collectionGroups` 是人为策展归组，不能当作提供方确认的歌曲风格。无可靠来源的 genre/year/artistGenres 保持缺失。
+当前索引 **145,548 首、6,965 个主要艺人 ID**，源采集 148,607 条真实 Deezer ID，按 NFKC、大小写和空白规范化后的艺人及曲名去重，保留曲名标点和版本信息。145,536 首在采集时存在试听地址，不能据此保证现在或所有地区可播。
 
-全索引参与候选召回；**Jev 只评价本轮的最多 200 首，不是对全库逐首评分**。候选按实时关联、索引同类集合、邻近集合与开放探索混合抽样；每位艺人最多 3 首。最终最多保留 14 首，每位艺人 1 首，分成每组 7 首呈现。不足合格数量时不凑数。
+曲库拆为 **73 个分片**，每片最多 2,000 首。每轮按种子策展路径与全库范围抽样，最多加载 10 片、20,000 条，再结合实时关联作品召回最多 **5,000 首**。Jev 对实际候选逐首评分，最终保留最多 14 位不同艺人的作品，分两组各 7 首。明确偏好、不可试听和去重可能使候选少于 5,000，界面展示实际数量，不重复凑数。
 
-索引作为独立静态数据文件按需由服务端读取，不进入首页 JavaScript。它是偏热门的艺术家作品快照，不是全球完整曲库；`previewAvailable` 只表示采集当时存在试听。用户点播放后仍会刷新并检查提供方 URL。当前未设置后台自动扩库。
+Jev 单批最多 128 个问题，并发 4。无补充条件时 5,000 首分 40 批、10 个步骤；有补充条件时每首多一个约束问题，最多 79 批、20 步。D1 记录任务进度和步骤租约，防止并发/重放重复计费；全站每 UTC 日最多 30 轮。上游失败不返回部分推荐、不自动重试付费批次；客户端可读取已提交状态恢复网络中断。取消阻止后续步骤，已在途调用可能仍完成。
 
-更新索引（无密钥、仅采集元数据，有请求上限）：
+这仍是偏向艺人热门作品及其关联艺人的快照，不是全球完整曲库。`collectionGroups` 是策展发现路径，不能当作官方风格。没有可信来源的 year、genre、ISRC 保持缺失；年代条件会排除年份未知的候选。Jev 只读文本资料，不能直接听音频，筛选质量仍需用试听和复听验证。
 
-```sh
-python3 scripts/rebuild-library.py --output output/rebuilt-catalog
-node scripts/import-library.mjs output/rebuilt-catalog
-```
+## 实测
 
-采集艺人及路径见 `data/catalog-manifest.json`，最终数量见 `data/library-manifest.json`。重建脚本彻底排除了本次发现返回相同热门名单的 genre/artists 接口；不采集音频、不保存签名试听链接。平台目录变化会使重建数量变化。年代偏好会排除年份未知的曲目，每轮仅对最多 12 张候选专辑额外查资料，避免全库逐张拉取。
+一次真实 Jev 测试：**5,000 首全部完成评分，13,974 ms，40 批、并发 4，零失败、零重试**，模型 `jev-1.13.0`。输入 1,636,227 tokens，输出 128,691 tokens。
 
-## 推荐边界
-
-Jev 当前只接收文本。首版依据歌曲、艺术家、专辑类型、发行年份、来源关系和用户明确偏好筛选，不声称分析音频、旋律、人声质感或歌曲片段。资料缺失会降低判断依据。推荐质量需要持续用真实试听与复听验证。
-
-年代约束使用提供方的发行年份，可能是再版发行年；不要把它当作首次录音时间。曲目版本在搜索结果中保留，选择时核对原版、现场、混音等。部分地区或曲目没有试听。
+该测试从上一版 5,163 首索引取 5,000 首，以 Radiohead / No Surprises 为起点；只测模型评分阶段，不含搜索、召回、D1 步骤或网页传输，也不代表推荐质量或稳定时延。可提交报告见 `data/benchmark-5000.json`。
 
 ## 本地运行
 
-Node 22.13+。
+Node 22.13+，需要两个终端：
 
 ```sh
 npm ci
-cp .env.example .env
-# 将 TYPESAFE_API_KEY 填入 .env，文件已被 Git 忽略。
-npm run db:generate # 仅 schema 改动时需要；已有迁移无需重新生成
-npm run build
-node --import ./scripts/sites-env.mjs ./node_modules/wrangler/bin/wrangler.js d1 execute DB --local --config dist/server/wrangler.json --persist-to .wrangler/state --file drizzle/0000_shocking_rocket_racer.sql
-npm run dev
+# 创建 .dev.vars，填写 TYPESAFE_API_KEY=...；该文件被 Git 忽略。
+npx wrangler d1 migrations apply DB --local --config wrangler.api.jsonc
+npm run dev:api
 ```
 
-本地首次点“帮我找歌”后按提示登录。开发登录只在 loopback 环境模拟用户；线上身份由 Sites 验证。不要重复执行已应用的建表迁移。
+```sh
+npm run dev
+# http://127.0.0.1:5176/aftertone/，API 代理到 127.0.0.1:8788
+```
 
 ```sh
 npm test
-npx tsc --noEmit
+npx tsc --noEmit --incremental false
 npm run build
+npx wrangler deploy --dry-run --config wrangler.api.jsonc
 ```
 
-## 部署
+## 发布
 
-前后端以 Cloudflare Worker 运行。`.openai/hosting.json` 保存 Sites 身份和逻辑 `DB` 绑定。部署时配置服务端 `TYPESAFE_API_KEY` secret 并应用 `drizzle/` 中迁移。生产不依赖本机 `.env`。网站默认仅所有者可访问。GitHub 保存完整源码，不保存密钥、构建包或试听音频。
+私有源码仓库在当前套餐下不能启用 Pages，因此使用公开静态仓库 `Emanon4/aftertone-pages` 的 main 根目录发布；`.nojekyll` 禁用 Jekyll。源码 CI 仅验证，不对不支持的私有 Pages 执行部署。
 
-## 数据及设计依据
+API 需要用户完成真实 Cloudflare 登录，随后创建 D1、把返回 ID 写入 `wrangler.api.jsonc`，再执行：
 
-曲目与专辑封面来自 [Deezer](https://www.deezer.com/)，部分搜索来自 [iTunes Search API](https://performance-partners.apple.com/search-api)。试听仅用于发现对应歌曲，附平台链接；iTunes 试听注明来源，不作独立的连续播放服务。媒体版权属于各权利人，技术可访问性不代表可转授权。
+```sh
+npx wrangler d1 migrations apply DB --remote --config wrangler.api.jsonc
+npx wrangler secret put TYPESAFE_API_KEY --config wrangler.api.jsonc
+npm run deploy:api
+PAGES_BASE_PATH=/aftertone-pages/ VITE_API_BASE=https://实际Worker地址 npm run build:pages
+```
 
-界面借鉴 [NTS](https://www.nts.live/) 的音乐内容优先、[Qobuz](https://www.qobuz.com/) 的真实专辑呈现，以及 [Poolsuite](https://poolsuite.net/) 的明确播放器反馈。公开 HTML/CSS 研究用于提炼原则，界面没有复制这些网站。
+将 `dist-pages/` 内容及 `.nojekyll` 提交到公开发布仓库的 main。不要复制 `.env`、`.dev.vars`、源码目录或模型密钥。`VITE_API_BASE` 只能是公开 API 地址；留空时生产构建明确显示听音室预览，不发起不存在的 API 请求。大曲库数据只由 API 资产绑定读取，不进入首页 JavaScript 或 Pages 构建产物。
 
-Jev 官方边界：[State](https://docs.typesafe.ai/concepts/state)、[Score](https://docs.typesafe.ai/primitives/score)。
+## 重建索引
 
-首页黑胶摄影：[Evan-Amos / 12in-Vinyl-LP-Record-Angle](https://commons.wikimedia.org/wiki/File:12in-Vinyl-LP-Record-Angle.jpg)，作者声明公有领域（PD-self）。
+```sh
+python3 scripts/rebuild-library.py --manifest data/catalog-manifest.json --output output/rebuilt-catalog
+node scripts/import-library.mjs output/rebuilt-catalog
+```
+
+有界采集公开元数据，最多 4 并发、3,000 次请求，不下载音频。提供方目录变化会使重建数量变化。清单、采集审计和最终规模分别见 `data/catalog-manifest.json`、`data/catalog-audit.json`、`data/library-manifest.json`。新采集目录没有原快照清单时，导入器不会错误套用旧哈希。
+
+## 设计与来源
+
+界面方向为玻璃听音室：采用原 Logo 的橙红色与暖白；七张真实封面展墙；玻璃集中在搜索台、分段按钮及浮动播放器，按钮借鉴 Apple 玻璃界面的边缘高光与按压反馈。参考 [NTS](https://www.nts.live/) 的内容组织、[Poolsuite](https://poolsuite.net/) 的播放器体验、[teenage engineering](https://teenage.engineering/) 的精确排版，以及 [Oda](https://www.oda.co/) 的声音情境。参考研究基于公开 HTML/CSS，未复刻页面。
+
+歌曲和封面来自 [Deezer](https://www.deezer.com/)，华语搜索补充 [iTunes Search API](https://performance-partners.apple.com/search-api)。试听解析提供方即时 URL，不保存音频或签名试听链接；完整歌曲指向平台，iTunes 试听标注来源。版权属于各权利人。

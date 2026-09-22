@@ -49,3 +49,7 @@ next-env.d.ts
 /output/
 *.tsbuildinfo
 !.env.example
+
+/dist-pages/
+/.dev.vars*
+/worker-configuration.d.ts

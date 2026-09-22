@@ -22,3 +22,15 @@ test('exploration excludes the seed artist; artist genre evidence stays distinct
  assert.deepEqual(tracks.map(t=>t.id),['3','4']);assert.equal(tracks[0].genre,undefined);
  assert.deepEqual(tracks[0].artistGenres,['Jazz']);assert.equal(tracks[0].source,'曲库关联探索');
 });
+
+test('large recall fills 5000 unique recordings with dynamic artist caps no higher than 20',()=>{
+ const library=Array.from({length:20_000},(_,i)=>song(i+10,{artist:`Artist ${Math.floor(i/40)}`}));
+ const tracks=selectCandidatePool(seed,library,[],[],'close',5000,()=>.4);
+ assert.equal(tracks.length,5000);assert.equal(new Set(tracks.map(t=>t.id)).size,5000);
+ const counts=new Map();for(const t of tracks)counts.set(t.artist,(counts.get(t.artist)||0)+1);
+ assert.ok([...counts.values()].every(n=>n<=20));assert.ok(counts.size>=250);
+});
+test('large recall reports the actual available count instead of duplicating songs to fill 5000',()=>{
+ const library=Array.from({length:100},(_,i)=>song(i+10,{artist:'Only one artist'}));
+ assert.equal(selectCandidatePool(seed,library,[],[],'close',5000,()=>.5).length,20);
+});
