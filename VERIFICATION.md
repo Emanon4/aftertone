@@ -42,7 +42,7 @@
 
 ## 发布范围
 
-公开 Pages 静态发布仓库为 `Emanon4/aftertone-pages`。源码 `Emanon4/aftertone` 已设置为 PUBLIC，包含 `LICENSE` 与 `THIRD_PARTY_NOTICES.md`。Pages 构建 `98e6854` 的 GitHub 发布状态为 built。
+公开 Pages 静态发布仓库为 `Emanon4/aftertone-pages`。源码 `Emanon4/aftertone` 已设置为 PUBLIC，包含 `LICENSE` 与 `THIRD_PARTY_NOTICES.md`。GitHub Pages 构建与部署已成功。
 
 生产 Worker 已上线：`https://aftertone-api.moji-pet.workers.dev`。Cloudflare D1 已绑定，`0001` 和 `0002` 两次远端迁移已部署。生产实据保存在本地 `output/production-api-check.json`：
 
