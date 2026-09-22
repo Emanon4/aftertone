@@ -4,7 +4,7 @@
 
 余音是一个开源的音乐发现网站。给它一首你喜欢的歌，让 Jev 从真实曲库召回的候选中辅助筛选，再用七首歌给你一个新的听歌起点。你可以试听、收藏，也可以选择常用的官方音乐平台听完整首。
 
-[打开网站](https://emanon4.github.io/aftertone-pages/) · [GitHub 源码](https://github.com/Emanon4/aftertone) · [隐私与数据说明](PRIVACY.md) · [验证记录](VERIFICATION.md)
+[打开网站](https://emanon4.github.io/aftertone/) · [GitHub 源码](https://github.com/Emanon4/aftertone) · [隐私与数据说明](PRIVACY.md) · [验证记录](VERIFICATION.md)
 
 ## 项目介绍
 
@@ -23,7 +23,7 @@ Jev 根据歌曲资料和偏好评分，当前实现不分析音频。“好听�
 
 ## 网站与架构
 
-- 公开前端：[GitHub Pages](https://emanon4.github.io/aftertone-pages/)，发布仓库只保存静态构建产物。
+- 公开前端：[GitHub Pages](https://emanon4.github.io/aftertone/)，由本仓库的 GitHub Actions 自动构建发布。
 - [生产 API](https://aftertone-api.moji-pet.workers.dev/api/library) 已上线，Cloudflare D1 两次迁移已应用，站点 Jev 和个人模型入口已配置。GitHub Pages 新版已接入该 API，默认采用深色听音室。
 - 前端使用 Vite + React；独立 API 使用 Cloudflare Worker + D1。站点 Jev 密钥使用 Worker secret，个人模型密钥按下文的 BYOK 流程传递。
 - 源码按 [MIT](LICENSE) 公开发布；音乐数据、封面、试听和第三方服务不属于本项目的 MIT 授权范围，见 [第三方声明](THIRD_PARTY_NOTICES.md)。
@@ -100,7 +100,7 @@ npx wrangler deploy --dry-run --config wrangler.api.jsonc
 
 ## 发布
 
-源码仓库为 [Emanon4/aftertone](https://github.com/Emanon4/aftertone)，已公开开源。前端继续使用公开静态仓库 `Emanon4/aftertone-pages` 的 main 根目录发布；`.nojekyll` 禁用 Jekyll，源码 CI 负责验证。
+源码仓库为 [Emanon4/aftertone](https://github.com/Emanon4/aftertone)，已公开开源。源码、后端和前端发布统一在此仓库维护。推送 main 后，GitHub Actions 运行测试、类型检查和构建，通过后自动部署 GitHub Pages。
 
 生产 Worker 已部署至 `https://aftertone-api.moji-pet.workers.dev`；D1 数据库已绑定，`0001` 与 `0002` 两次远端迁移已应用。`/api/library` 返回 `available: true` 和 `byokAvailable: true`，搜索、曲目详情及创建后取消任务已通过生产检查。GitHub Pages 已接入生产 API，公开网页实测搜索与短试听成功。
 
@@ -110,10 +110,10 @@ npx wrangler deploy --dry-run --config wrangler.api.jsonc
 npx wrangler d1 migrations apply DB --remote --config wrangler.api.jsonc
 npx wrangler secret put TYPESAFE_API_KEY --config wrangler.api.jsonc
 npm run deploy:api
-PAGES_BASE_PATH=/aftertone-pages/ VITE_API_BASE=https://aftertone-api.moji-pet.workers.dev npm run build:pages
+PAGES_BASE_PATH=/aftertone/ VITE_API_BASE=https://aftertone-api.moji-pet.workers.dev npm run build:pages
 ```
 
-将 `dist-pages/` 内容及 `.nojekyll` 提交到公开发布仓库的 main。不要复制 `.env`、`.dev.vars`、源码目录或模型密钥。`VITE_API_BASE` 只能是公开 API 地址；留空时生产构建明确显示听音室预览，不发起不存在的 API 请求。大曲库数据只由 API 资产绑定读取，不进入首页 JavaScript 或 Pages 构建产物。
+在仓库 Settings → Pages 中选择 GitHub Actions；工作流自动上传 `dist-pages/`，不需要另建发布仓库。不要复制 `.env`、`.dev.vars`、源码目录或模型密钥。`VITE_API_BASE` 只能是公开 API 地址；留空时生产构建明确显示听音室预览，不发起不存在的 API 请求。大曲库数据只由 API 资产绑定读取，不进入首页 JavaScript 或 Pages 构建产物。
 
 ## 重建索引
 

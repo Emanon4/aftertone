@@ -1,4 +1,4 @@
-name: Verify
+name: Verify and deploy
 on:
   push:
     branches: [main]
@@ -9,8 +9,8 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
@@ -19,4 +19,25 @@ jobs:
       - run: npx tsc --noEmit --incremental false
       - run: npm run build:pages
         env:
-          PAGES_BASE_PATH: /aftertone-pages/
+          PAGES_BASE_PATH: /aftertone/
+          VITE_API_BASE: https://aftertone-api.moji-pet.workers.dev
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist-pages
+  deploy:
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    steps:
+      - name: Deploy GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
