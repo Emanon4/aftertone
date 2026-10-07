@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { AudioLines, Heart, LoaderCircle, Pause, Play } from "lucide-react";
-import { trackKey, type Track } from "@/lib/music";
+import { coverAt, trackKey, type Track } from "@/lib/music";
 import { useI18n } from "../lib/i18n";
 
 export function RailHead({ title, note, children }: { title: ReactNode; note?: ReactNode; children?: ReactNode }) {
@@ -19,7 +19,7 @@ export function RecordRail({ tracks, focus, onFocus, onSelect, isPlaying, loadin
    return <article key={key} className={`record ${focus === i ? "is-focus" : ""} ${playing ? "is-playing" : ""}`} style={{ "--i": i } as React.CSSProperties}>
     <div className="cover">
      <button className="cover-hit" onClick={() => { onFocus?.(i); onPlay(track, i); }} aria-label={playing ? t("card.pause", { title: track.title }) : t("card.preview", { title: track.title })} disabled={loadingKey === key}>
-      {track.image ? <img src={track.image} alt="" loading={i < 4 ? "eager" : "lazy"} decoding="async" /> : <span className="cover-empty" />}
+      {track.image ? <img src={coverAt(track.image, 500)} srcSet={`${coverAt(track.image, 250)} 250w, ${coverAt(track.image, 500)} 500w`} sizes="(max-width: 760px) 44vw, (max-width: 1180px) 22vw, 14vw" alt="" loading={i < 4 ? "eager" : "lazy"} decoding="async" /> : <span className="cover-empty" />}
       <span className="cover-play">{loadingKey === key ? <LoaderCircle className="spin" size={18} /> : playing ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" />}</span>
      </button>
      {numbered && <span className="cover-num">{String(i + 1).padStart(2, "0")}</span>}

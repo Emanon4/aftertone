@@ -102,7 +102,9 @@ export function r2Reader(bucket: R2Bucket): AssetReader {
  } };
 }
 
-const defaults = { getLibraryManifest, getTrack, recall, searchSongs, rankWithJev, rankWithCompatible, verifyCompatibleKey, verifyTurnstile, now: Date.now };
+// Zone cache: a no-op on *.workers.dev, effective once the API has a custom domain.
+const edgeCache = (): Cache | undefined => typeof caches !== "undefined" ? (caches as unknown as { default?: Cache }).default : undefined;
+const defaults = { getLibraryManifest, getTrack, recall, searchSongs, rankWithJev, rankWithCompatible, verifyCompatibleKey, verifyTurnstile, now: Date.now, cache: undefined as Cache | undefined };
 export function createApi(overrides: Partial<typeof defaults> = {}) {
  const deps = { ...defaults, ...overrides };
  return async (request: Request, env: AftertoneApiEnv): Promise<Response> => {
@@ -127,9 +129,21 @@ export function createApi(overrides: Partial<typeof defaults> = {}) {
    }
    if (url.pathname === "/api/music" && request.method === "GET") {
     const id = url.searchParams.get("id"), provider = url.searchParams.get("provider") || "deezer";
-    if (id) { if (!["deezer", "itunes"].includes(provider) || !/^\d{1,18}$/.test(id)) throw new ApiError("歌曲编号或音乐来源无效。"); return respond({ track: await deps.getTrack(id, provider, config.country) }); }
-    const q = url.searchParams.get("q")?.trim(); if (!q || q.length < 2 || q.length > 120) throw new ApiError("请输入 2–120 字的歌名或歌手。");
-    return respond({ tracks: await deps.searchSongs(q, config.country) });
+    const q = url.searchParams.get("q")?.trim();
+    if (id) { if (!["deezer", "itunes"].includes(provider) || !/^\d{1,18}$/.test(id)) throw new ApiError("歌曲编号或音乐来源无效。"); }
+    else if (!q || q.length < 2 || q.length > 120) throw new ApiError("请输入 2–120 字的歌名或歌手。");
+    // Shared edge cache: popular searches and lookups never reach Deezer/iTunes twice. Lookups carry
+    // short-lived signed preview URLs, so they expire sooner than search results.
+    const cacheKey = new Request(`https://music-cache.aftertone/${id ? `track/${provider}/${id}` : `search/${encodeURIComponent(q!.toLowerCase())}`}?c=${config.country}`);
+    const cache = deps.cache ?? edgeCache();
+    const cached = await cache?.match(cacheKey);
+    if (cached) return respond(await cached.json());
+    // Only provider round-trips count against the per-visitor limit; cache hits are free.
+    const ip = request.headers.get("CF-Connecting-IP");
+    if (ip && env.MUSIC_LIMITER && !(await env.MUSIC_LIMITER.limit({ key: ip })).success) throw new ApiError("搜索太频繁了，请稍等一会儿再试。", 429);
+    const body = id ? { track: await deps.getTrack(id, provider, config.country) } : { tracks: await deps.searchSongs(q!, config.country) };
+    await cache?.put(cacheKey, Response.json(body, { headers: { "Cache-Control": `public, max-age=${id ? 300 : 900}` } }));
+    return respond(body);
    }
    if (url.pathname === "/api/recommend" && request.method === "POST") {
     if (!env.DB) throw new ApiError("筛选任务服务暂不可用。", 503);

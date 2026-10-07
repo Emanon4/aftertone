@@ -1,11 +1,10 @@
 import { ArrowRight, Heart, LoaderCircle, Pause, Play } from "lucide-react";
-import { trackKey, type Track } from "@/lib/music";
+import { coverAt, trackKey, type Track } from "@/lib/music";
 import { useI18n } from "../lib/i18n";
 import { DismissMenu } from "./DismissMenu";
 import { SongLinks } from "./SongLinks";
 import type { DismissReason } from "../lib/storage";
 
-const large = (url: string) => url.replace(/\/\d+x\d+-/, "/1000x1000-");
 
 export function Hero({ track, eyebrow, index, total, onDot, playing, loading, onPlay, onStart, startLabel, saved, onSave, onDismiss, canDismiss }: {
  track: Track; eyebrow: string; index: number; total: number; onDot: (i: number) => void;
@@ -15,7 +14,7 @@ export function Hero({ track, eyebrow, index, total, onDot, playing, loading, on
  const { t } = useI18n();
  const meta = [track.artist, track.album && track.album !== track.title ? track.album : "", track.year || "", t("hero.previewLength")].filter(Boolean);
  return <section className="hero" aria-live="polite">
-  <div className="hero-frame"><div className="hero-art" key={trackKey(track)} style={{ backgroundImage: track.image ? `url(${large(track.image)})` : undefined }} role="img" aria-label={`${track.album || track.title}`} /></div>
+  <div className="hero-frame"><div className="hero-art" key={trackKey(track)} style={{ backgroundImage: track.image ? `url(${coverAt(track.image, 1000)})` : undefined }} role="img" aria-label={`${track.album || track.title}`} /></div>
   <div className="hero-shade" />
   <div className="hero-content">
    <p className="eyebrow"><i />{eyebrow}</p>

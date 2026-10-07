@@ -1,5 +1,5 @@
 import { Heart, LoaderCircle, Pause, Play, Volume2 } from "lucide-react";
-import { seconds, type Track } from "@/lib/music";
+import { coverAt, seconds, type Track } from "@/lib/music";
 import { useI18n } from "../lib/i18n";
 import { Range } from "./primitives";
 import { SongLinks } from "./SongLinks";
@@ -12,7 +12,7 @@ export function PlayerBar({ track, playing, ended, loading, position, duration, 
  const total = duration || 30;
  return <div className="player glass" role="region" aria-label={t("player.label", { sec: Math.round(total) })}>
   <div className="player-track">
-   {track.image ? <img className={playing ? "is-spinning" : ""} src={track.image} alt="" /> : <span className="player-disc" />}
+   {track.image ? <img className={playing ? "is-spinning" : ""} src={coverAt(track.image, 120)} alt="" /> : <span className="player-disc" />}
    <div><strong>{track.title}</strong><span>{track.artist} · {ended ? t("player.ended") : t("player.label", { sec: Math.round(total) })}</span></div>
   </div>
   <div className="player-transport">

@@ -20,6 +20,8 @@
     "bindings": [{ "name": "JOB_RUNNER", "class_name": "JobRunner" }]
   },
   "migrations": [{ "tag": "v1-job-runner", "new_sqlite_classes": ["JobRunner"] }],
+  // Per-IP limit on search/lookups that reach Deezer or iTunes (cache hits are not counted).
+  "ratelimits": [{ "name": "MUSIC_LIMITER", "namespace_id": "1001", "simple": { "limit": 40, "period": 60 } }],
   // Optional: move the catalog to R2 (see docs/deploy.md), then uncomment.
   // "r2_buckets": [{ "binding": "CATALOG", "bucket_name": "aftertone-catalog" }],
   "vars": {

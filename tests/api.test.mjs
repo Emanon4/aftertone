@@ -282,3 +282,15 @@ test('a busy lease makes the runner wait instead of running the same step twice'
  const storage=new FakeStorage();await storage.put('jobId',job.jobId);const runner=new JobRunner({storage},f.env,{rankWithJev,rankWithCompatible,now:f.now});
  await runner.alarm();assert.equal(storage.alarm,f.now()+2000);assert.equal(f.calls,0);
 });
+class FakeCache{constructor(){this.map=new Map();}async match(r){const v=this.map.get(r.url);return v?new Response(v):undefined;}async put(r,res){this.map.set(r.url,await res.text());}}
+test('music lookups are cached at the edge and only provider round-trips count against the limiter',async()=>{
+ let searches=0,limited=0;const cache=new FakeCache();
+ const f=setup(1,undefined,{cache,searchSongs:async()=>{searches++;return [seed];}});
+ f.env.MUSIC_LIMITER={limit:async()=>{limited++;return {success:limited<=1};}};
+ const get=q=>f.api(new Request(`https://api.example/api/music?q=${q}`,{headers:{Origin:'https://emanon4.github.io','CF-Connecting-IP':'203.0.113.7'}}),f.env);
+ assert.equal((await get('Radiohead')).status,200);
+ const again=await get('radiohead');assert.equal(again.status,200);assert.equal((await again.json()).tracks.length,1);
+ assert.equal(searches,1);assert.equal(limited,1);
+ const other=await get('Lamp');assert.equal(other.status,429);assert.equal(searches,1);
+ assert.equal((await get('x')).status,400);
+});

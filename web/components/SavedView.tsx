@@ -1,6 +1,6 @@
 import { useRef } from "react";
 import { ArrowRight, Copy, Download, FileJson, Heart, Play, RotateCcw, Share2, Upload } from "lucide-react";
-import { trackKey, type Track } from "@/lib/music";
+import { coverAt, trackKey, type Track } from "@/lib/music";
 import { useI18n } from "../lib/i18n";
 
 export function SavedView({ saved, dismissedCount, onPlay, onChoose, onUnsave, onCsv, onText, onBackup, onImport, onShare, onResetDismissed, onDiscover }: {
@@ -26,7 +26,7 @@ export function SavedView({ saved, dismissedCount, onPlay, onChoose, onUnsave, o
   </div>
   {saved.length ? <ol className="saved-grid">
    {saved.map((track, i) => <li key={trackKey(track)} className="saved-card glass">
-    <button className="saved-cover" onClick={() => onPlay(track)} aria-label={t("card.preview", { title: track.title })}>{track.image && <img src={track.image} alt="" loading="lazy" />}<span><Play size={16} fill="currentColor" /></span></button>
+    <button className="saved-cover" onClick={() => onPlay(track)} aria-label={t("card.preview", { title: track.title })}>{track.image && <img src={coverAt(track.image, 250)} alt="" loading="lazy" />}<span><Play size={16} fill="currentColor" /></span></button>
     <div className="saved-info"><span className="saved-num">{String(i + 1).padStart(2, "0")}</span><strong>{track.title}</strong><small>{track.artist}{track.album ? ` · ${track.album}` : ""}</small></div>
     <div className="saved-actions">
      <button className="btn btn-soft" onClick={() => onChoose(track)}>{t("saved.follow")}<ArrowRight size={14} /></button>

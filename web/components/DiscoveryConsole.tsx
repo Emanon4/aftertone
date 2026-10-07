@@ -1,6 +1,6 @@
 import { forwardRef } from "react";
 import { ArrowRight, ArrowUpRight, AudioLines, LoaderCircle, Play, Search, X } from "lucide-react";
-import { seconds, trackKey, type Track } from "@/lib/music";
+import { coverAt, seconds, trackKey, type Track } from "@/lib/music";
 import type { Direction, Progress } from "../lib/api";
 import { useI18n } from "../lib/i18n";
 
@@ -31,7 +31,7 @@ export const DiscoveryConsole = forwardRef<HTMLInputElement, Props>(function Dis
   {p.results && <div className="results">
    <div className="results-head"><span>{p.results.length ? t("results.pick") : t("results.none")}</span><button className="icon-btn" onClick={p.onCloseResults} aria-label={t("results.close")}><X size={17} /></button></div>
    <ul>{p.results.map(r => <li key={trackKey(r)}>
-    <button className="result-art" onClick={() => p.onPreview(r)} aria-label={t("results.preview", { title: r.title })}>{r.image && <img src={r.image} alt="" loading="lazy" />}<Play size={14} fill="currentColor" /></button>
+    <button className="result-art" onClick={() => p.onPreview(r)} aria-label={t("results.preview", { title: r.title })}>{r.image && <img src={coverAt(r.image, 120)} alt="" loading="lazy" />}<Play size={14} fill="currentColor" /></button>
     <button className="result-name" onClick={() => p.onChoose(r)}><strong>{r.title}</strong><small>{r.artist} · {r.album}</small></button>
     <span className="result-time">{seconds(r.duration)}</span>
     <button className="btn btn-soft" onClick={() => p.onChoose(r)}>{t("results.choose")}<ArrowRight size={15} /></button>
@@ -40,7 +40,7 @@ export const DiscoveryConsole = forwardRef<HTMLInputElement, Props>(function Dis
 
   {p.seed && <div className="seed-row">
    <div className="seed-chip">
-    {p.seed.image && <img src={p.seed.image} alt="" />}
+    {p.seed.image && <img src={coverAt(p.seed.image, 120)} alt="" />}
     <span><small>{t("console.seed")}</small><strong>{p.seed.title}</strong><em>{p.seed.artist}</em></span>
     <button className="icon-btn" onClick={p.onClearSeed} aria-label={t("console.removeSeed")}><X size={16} /></button>
    </div>

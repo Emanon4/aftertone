@@ -18,6 +18,8 @@ interface AftertoneApiEnv {
  IP_HASH_SALT?: string;
  /** Durable Object namespace that drives job steps server-side. */
  JOB_RUNNER?: DurableObjectNamespace;
+ /** Workers Rate Limiting binding for /api/music provider round-trips (per IP). */
+ MUSIC_LIMITER?: RateLimit;
  /** Optional R2 bucket holding catalog/*.json instead of static assets. */
  CATALOG?: R2Bucket;
 }

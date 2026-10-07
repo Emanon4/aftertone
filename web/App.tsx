@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowRight, Check, Disc3, Info, Share2, X } from "lucide-react";
 import featuredData from "@/lib/featured.json";
 import { modelRequestSnapshot, modelSettingsError, modelSettingsSummary, type ModelSettings } from "@/lib/model-settings";
-import { trackKey, type Track } from "@/lib/music";
+import { coverAt, trackKey, type Track } from "@/lib/music";
 import { lookupTrack, previewOnly, searchTracks, type Direction, type JobData } from "./lib/api";
 import { format, useI18n } from "./lib/i18n";
 import { download, mergeTracks, parseBackup, readShare, readStored, shareUrl, toBackup, toCsv, toText, withoutPreview, writeStored, type DismissReason, type DismissedTrack } from "./lib/storage";
@@ -47,7 +47,8 @@ export default function App() {
 
  const visible = recommendations ? recommendations.slice(round * 7, round * 7 + 7) : shared ?? featured;
  const focused = visible[Math.min(focus, Math.max(0, visible.length - 1))] as Track | undefined;
- const glow = useCoverColor(focused?.image);
+ const ambientCover = focused?.image ? coverAt(focused.image, 56) : undefined;
+ const glow = useCoverColor(ambientCover);
 
  // Persist without short-lived preview URLs.
  useEffect(() => {
@@ -168,7 +169,7 @@ export default function App() {
  const modelChip = modelSettingsSummary(modelSettings) ?? (modelSettings.mode === "jev" ? t("model.summary.jev") : t("model.chip"));
 
  return <div className={`app ${player.current ? "has-player" : ""}`} style={{ "--glow-rgb": glow } as React.CSSProperties}>
-  <div className="ambient" aria-hidden="true">{focused?.image && <img key={focused.image} src={focused.image} alt="" />}</div>
+  <div className="ambient" aria-hidden="true">{ambientCover && <img key={ambientCover} src={ambientCover} alt="" />}</div>
   <Header view={view} onView={v => { setView(v); window.scrollTo({ top: 0 }); }} savedCount={saved.length} onSearch={openSearch} onSettings={() => setModelOpen(true)} onAbout={() => setAboutOpen(true)} />
 
   <main>
