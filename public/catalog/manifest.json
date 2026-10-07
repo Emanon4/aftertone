@@ -586,5 +586,12 @@
    "groups": []
   }
  ],
- "format": "compact-v3"
+ "format": "compact-v3",
+ "albumMetadata": {
+  "source": "Deezer /album release_date and genres",
+  "enrichedAt": "2026-10-07T05:15:56.755Z",
+  "albums": 52345,
+  "withYear": 52287,
+  "withGenre": 50102
+ }
 }
