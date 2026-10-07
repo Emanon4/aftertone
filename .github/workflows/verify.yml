@@ -38,7 +38,7 @@ jobs:
         env:
           PAGES_BASE_PATH: /aftertone/
           VITE_API_BASE: https://aftertone-api.moji-pet.workers.dev
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         if: github.event_name != 'pull_request'
         with:
           path: dist-pages
