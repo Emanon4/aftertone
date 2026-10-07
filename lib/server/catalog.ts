@@ -6,7 +6,24 @@ export type CatalogManifest = {
  version: number; tracks: number; artists: number; previewable: number; collectedAt: string;
  collectionGroups?: string[]; shards?: { file: string; count: number; groups: string[] }[];
 };
-type Artist = { id: string; name: string; groups: string[] };
+type Artist = { id: string; name: string; groups: string[]; inferredGroups?: string[] };
+/** Curated groups first; otherwise groups inferred offline from album genres (scripts/infer-artist-groups.mjs). */
+const artistGroups = (a?: Artist) => a ? (a.groups.length ? a.groups : a.inferredGroups || []) : [];
+/** Writing system as a weak cue: kana/Hangul → japan-korea, Han → mandarin-cantonese. */
+export const scriptGroup = (text: string) => /[\u3040-\u30ff\uac00-\ud7af\u1100-\u11ff]/.test(text) ? "japan-korea" : /[\u3400-\u9fff]/.test(text) ? "mandarin-cantonese" : null;
+/**
+ * Groups for a seed whose artist has none: vote among the live related/radio artists found in the
+ * artist table (a group needs a quarter of them, at most two), plus the seed's writing system.
+ */
+export function voteSeedGroups(seed: Track, hintArtists: string[], artists: Artist[]): string[] {
+ const byName = new Map(artists.map(a => [clean(a.name), a]));
+ const found = [...new Set(hintArtists.map(clean))].map(n => byName.get(n)).filter((a): a is Artist => Boolean(a) && artistGroups(a).length > 0);
+ const counts = new Map<string, number>();
+ for (const a of found) for (const g of artistGroups(a)) counts.set(g, (counts.get(g) || 0) + 1);
+ const voted = [...counts].filter(([, n]) => n >= Math.max(2, found.length / 4)).sort((x, y) => y[1] - x[1]).slice(0, 2).map(([g]) => g);
+ const script = scriptGroup(`${seed.title} ${seed.artist} ${seed.album}`);
+ return [...new Set([...voted, ...(script ? [script] : [])])];
+}
 /** v3 rows: [id, title, artistIndex, albumIndex, duration, groupMask, previewable]; albums: [id, title, coverHash, year, genres]. */
 export type CompactShard = { albums: [string, string, string, string | null, string[] | null][]; tracks: [string, string, number, number, number, number, 0 | 1][] };
 /** Expand a compact shard back into Track objects (see scripts/compact-catalog.mjs). */
@@ -23,7 +40,7 @@ export function expandCompactShard(shard: CompactShard, artists: Artist[], group
  });
 }
 export type AssetReader = { fetch: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response> };
-export type CatalogOptions = { assets?: AssetReader; limit?: number; maxRows?: number; random?: () => number };
+export type CatalogOptions = { assets?: AssetReader; limit?: number; maxRows?: number; random?: () => number; hintArtists?: string[] };
 const SHARD_FILE: Record<number, RegExp> = { 2: /^part-\d{3,6}\.json$/, 3: /^shard-\d{3,6}\.json$/ };
 export const libraryStats = { tracks: legacyManifest.tracks, artists: legacyManifest.artists, previewable: legacyManifest.previewable, collectedAt: legacyManifest.collectedAt };
 const MAX_ROWS = 20_000;
@@ -68,7 +85,9 @@ export async function loadLibrarySample(seed: Track, requestUrl: string, options
  const artists = await readJson(artistsResponse, 3_000_000) as Artist[];
  if (!Array.isArray(artists)) throw new Error("艺术家索引格式无效。");
  const entry = artists.find(a => clean(a.name) === clean(seed.artist));
- seed = { ...seed, collectionGroups: [...new Set([...(seed.collectionGroups || []), ...(entry?.groups || [])])] };
+ let own = artistGroups(entry), groupSource = entry?.groups.length ? "curated" : own.length ? "inferred" : "none";
+ if (!own.length) { own = voteSeedGroups(seed, options.hintArtists || [], artists); if (own.length) groupSource = "related-artists"; }
+ seed = { ...seed, collectionGroups: [...new Set([...(seed.collectionGroups || []), ...own])] };
  const groups = new Set(seed.collectionGroups || []);
  const preferred = shuffled(manifest.shards!.filter(s => s.groups.some(g => groups.has(g))), random);
  const global = shuffled(manifest.shards!, random);
@@ -89,7 +108,7 @@ export async function loadLibrarySample(seed: Track, requestUrl: string, options
   return rows;
  }));
  const tracks = loaded.flat();
- return { seed, tracks, manifest, shardsRead: selected.length, rowsScanned: tracks.length };
+ return { seed, tracks, manifest, shardsRead: selected.length, rowsScanned: tracks.length, groupSource };
 }
 
 type Raw = {
@@ -136,8 +155,7 @@ async function enrichSeed(seed: Track): Promise<Track> {
  catch { return seed; }
 }
 export async function recall(seed: Track, excluded: string[], direction = "close", requestUrl = "http://localhost", options: CatalogOptions = {}) {
- const loaded = await loadLibrarySample(seed, requestUrl, options);
- seed = await enrichSeed(loaded.seed);
+ // Live relations first: they also tell us which index shards to read when the seed artist has no groups.
  let artistId = seed.provider === "deezer" ? seed.artistId : undefined;
  if (!artistId) { try { const data = await deezer(`search/artist?q=${encodeURIComponent(seed.artist)}&limit=5`); const match = data.data?.find((a: Raw) => clean(a.name) === clean(seed.artist)); artistId = match ? String(match.id) : undefined; } catch { /* The local index remains available. */ } }
  const live: Track[] = [];
@@ -148,7 +166,18 @@ export async function recall(seed: Track, excluded: string[], direction = "close
    try { const data = await deezer(`artist/${a.id}/top?limit=12`); live.push(...(data.data || []).filter((t: Raw) => t.readable !== false).map((t: Raw) => normalizeDeezer(t, "关联艺术家"))); } catch { /* Missing provider data stays unknown. */ }
   }));
  }
+ const loaded = await loadLibrarySample(seed, requestUrl, { ...options, hintArtists: live.map(t => t.artist) });
+ seed = await enrichSeed(loaded.seed);
+ // A seed album without genres (common for Mandarin catalogues on Deezer) borrows the most common
+ // album genres of its Deezer-related artists, under an explicitly named field.
+ if (!seed.genre) {
+  const related = new Set(live.map(t => clean(t.artist)));
+  const counts = new Map<string, number>();
+  for (const t of loaded.tracks) if (related.has(clean(t.artist))) for (const g of (t.genre || "").split(",").map(x => x.trim()).filter(Boolean)) counts.set(g, (counts.get(g) || 0) + 1);
+  const top = [...counts].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([g]) => g);
+  if (top.length) seed = { ...seed, relatedArtistAlbumGenres: top };
+ }
  const candidates = selectCandidatePool(seed, loaded.tracks, live, excluded, direction, options.limit || 5000, options.random);
  if (!candidates.length) throw new Error("这一方向暂时没有新的可试听歌曲，试试另一个起点。");
- return { seed, candidates, libraryCount: loaded.manifest.tracks, recallMeta: { targetCount: options.limit || 5000, rowsScanned: loaded.rowsScanned, shardsRead: loaded.shardsRead, returnedCount: candidates.length, scope: "bounded-index-sample-and-live-relations" } };
+ return { seed, candidates, libraryCount: loaded.manifest.tracks, recallMeta: { targetCount: options.limit || 5000, rowsScanned: loaded.rowsScanned, shardsRead: loaded.shardsRead, seedGroups: seed.collectionGroups, groupSource: "groupSource" in loaded ? loaded.groupSource : "none", returnedCount: candidates.length, scope: "bounded-index-sample-and-live-relations" } };
 }

@@ -38,7 +38,7 @@ export function prerankCandidates(seed: Track, pool: Track[], direction: Directi
  const avoided = new Set(avoidArtists.map(clean).filter(Boolean));
  const usable = avoided.size ? pool.filter(t => !avoided.has(clean(t.artist))) : pool;
  if (usable.length <= limit) return { candidates: usable, poolCount: usable.length, explorationCount: 0 };
- const seedTags = new Set(trackTags(seed));
+ const seedTags = new Set([...trackTags(seed), ...(seed.relatedArtistAlbumGenres || []).map(g => `genre:${clean(g)}`)]);
  // A small jitter breaks ties between equally (un)documented rows without dominating evidence.
  const ranked = usable.map(t => ({ t, s: prerankScore(t, seed, seedTags, direction) + random() * 0.5 })).sort((a, b) => b.s - a.s);
  const explorationCount = Math.round(limit * EXPLORATION_SHARE[direction]);

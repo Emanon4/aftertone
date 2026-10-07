@@ -5,6 +5,8 @@ export type Track = {
   genre?: string; artistGenres?: string[]; year?: string; bpm?: number; source?: string;
   isrc?: string; previewAvailable?: boolean;
   collectionGroups?: string[];
+  /** Seed only: most common album genres of Deezer-related artists, used when its own album has none. */
+  relatedArtistAlbumGenres?: string[];
   reason?: string; lane?: string; score?: number;
 };
 export const trackKey = (t: Pick<Track,"provider"|"id">) => `${t.provider}:${t.id}`;

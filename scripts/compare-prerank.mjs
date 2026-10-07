@@ -15,6 +15,9 @@ import { build } from "esbuild";
 const args = process.argv.slice(2);
 const opt = (name, fallback) => { const i = args.indexOf(`--${name}`); return i >= 0 ? args[i + 1] : fallback; };
 const dryRun = args.includes("--dry-run");
+// --subset-only scores just the pre-ranked candidates (what production scores): cheap, but no full-pool baseline.
+const subsetOnly = args.includes("--subset-only");
+const only = opt("only", "");
 const seedsWanted = Number(opt("seeds", "8")), poolSize = Number(opt("pool", "5000")), limit = Number(opt("limit", "600"));
 const directions = opt("directions", "close").split(",");   // each extra direction repeats the full-pool scoring
 const key = process.env.TYPESAFE_API_KEY;
@@ -28,7 +31,8 @@ const assets = { fetch: async input => { const name = new URL(String(input)).pat
 const mulberry = seed => () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
 
 // Fixed, varied seeds (looked up live so the provider IDs are current).
-const SEEDS = ["Men I Trust Show Me How", "Radiohead No Surprises", "周杰伦 晴天", "Lamp 恋人へ", "Sade Kiss of Life", "Khruangbin Friday Morning", "Fela Kuti Water No Get Enemy", "Bill Evans Waltz for Debby", "Daft Punk Digital Love", "Sufjan Stevens Chicago", "Cocteau Twins Heaven or Las Vegas", "Bad Bunny Tití Me Preguntó"].slice(0, seedsWanted);
+let SEEDS = ["Men I Trust Show Me How", "Radiohead No Surprises", "周杰伦 晴天", "Lamp 恋人へ", "Sade Kiss of Life", "Khruangbin Friday Morning", "Fela Kuti Water No Get Enemy", "Bill Evans Waltz for Debby", "Daft Punk Digital Love", "Sufjan Stevens Chicago", "Cocteau Twins Heaven or Las Vegas", "Bad Bunny Tití Me Preguntó"].slice(0, seedsWanted);
+if (only) SEEDS.splice(0, SEEDS.length, ...only.split("|"));
 async function findSeed(query) {
  const data = await (await fetch(`https://api.deezer.com/search?q=${encodeURIComponent(query)}&limit=1`)).json();
  const t = data.data?.[0];
@@ -66,11 +70,11 @@ for (const query of SEEDS) {
   const recalled = await recall(seed, [], direction, "http://catalog.local", { assets, limit: poolSize, random });
   const pool = recalled.candidates;
   const subset = prerankCandidates(recalled.seed, pool, direction, limit, random).candidates;
-  const { scores, usage, wallMs } = await scoreAll(recalled.seed, pool, direction);
+  const { scores, usage, wallMs } = await scoreAll(recalled.seed, subsetOnly ? subset : pool, direction);
   const full = pick(pool, scores, recalled.seed, direction), pre = pick(subset, scores, recalled.seed, direction);
   const subsetIds = new Set(subset.map(id)), preIds = new Set(pre.map(id));
   const mean = list => list.length ? list.reduce((n, t) => n + t.score, 0) / list.length : 0;
-  const row = { seed: `${seed.artist} — ${seed.title}`, direction, pool: pool.length, subset: subset.length,
+  const row = { seed: `${seed.artist} — ${seed.title}`, direction, seedGroups: recalled.seed.collectionGroups, subsetOnly, pool: pool.length, subset: subset.length,
    fullPicked: full.length, prePicked: pre.length,
    overlap: full.filter(t => preIds.has(id(t))).length,                 // same songs in both final lists
    fullTopKeptByPrerank: full.filter(t => subsetIds.has(id(t))).length, // full-pool favourites that survived pre-ranking

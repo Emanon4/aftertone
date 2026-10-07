@@ -6,7 +6,7 @@ import path from 'node:path';
 import {spawnSync} from 'node:child_process';
 import {build} from 'esbuild';
 const bundle=await build({stdin:{contents:'export * from "./lib/server/catalog.ts";',resolveDir:process.cwd(),loader:'ts'},bundle:true,platform:'node',format:'esm',write:false});
-const {loadLibrarySample,getLibraryManifest}=await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].contents).toString('base64')}`);
+const {loadLibrarySample,getLibraryManifest,voteSeedGroups,scriptGroup}=await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].contents).toString('base64')}`);
 
 const groups=['indie','jazz','rock'];
 const artists=[{id:'10',name:'Men I Trust',groups:['indie']},{id:'11',name:'Lamp',groups:['jazz','indie']}];
@@ -48,4 +48,21 @@ test('v3 manifests with unknown shard names or missing groups are rejected',asyn
  await assert.rejects(getLibraryManifest('https://api.example',reader(dir)));
  await writeFile(path.join(dir,'manifest.json'),JSON.stringify({version:3,tracks:1,artists:1,previewable:1,collectedAt:'x',shards:[]}));
  await assert.rejects(getLibraryManifest('https://api.example',reader(dir)));
+});
+
+test('seeds without curated groups use inferred groups, then live related artists, then writing system',async()=>{
+ const table=[{id:'1',name:'Jay Chou',groups:[]},{id:'2',name:'David Tao',groups:['mandarin-cantonese']},{id:'3',name:'Wang Leehom',groups:['mandarin-cantonese']},
+  {id:'4',name:'JJ Lin',groups:[],inferredGroups:['mandarin-cantonese']},{id:'5',name:'Random Rock',groups:['rock']}];
+ const seed={id:'9',provider:'deezer',title:'Sunny Day',artist:'Jay Chou',album:'Ye Hui Mei'};
+ assert.deepEqual(voteSeedGroups(seed,['David Tao','Wang Leehom','JJ Lin','Random Rock','Unknown'],table),['mandarin-cantonese']);
+ assert.deepEqual(voteSeedGroups(seed,['Random Rock'],table),[]);   // one stray artist is not enough
+ assert.deepEqual(voteSeedGroups({...seed,title:'晴天'},[],table),['mandarin-cantonese']);
+ assert.equal(scriptGroup('夜に駆ける'),'japan-korea');assert.equal(scriptGroup('사랑'),'japan-korea');assert.equal(scriptGroup('Sunny Day'),null);
+});
+test('the shard sample follows related-artist groups when the seed artist has none',async()=>{
+ const {dir}=await v2Catalog();spawnSync(process.execPath,['scripts/compact-catalog.mjs',dir]);
+ const table=JSON.parse(await readFile(path.join(dir,'artists.json'),'utf8'));table.push({id:'12',name:'Unlabelled',groups:[]});
+ await writeFile(path.join(dir,'artists.json'),JSON.stringify(table));
+ const loaded=await loadLibrarySample({...row(1,0),artist:'Unlabelled'},'https://api.example',{assets:reader(dir),random:()=>.5,hintArtists:['Men I Trust','Lamp']});
+ assert.equal(loaded.groupSource,'related-artists');assert.deepEqual(loaded.seed.collectionGroups,['indie']);
 });

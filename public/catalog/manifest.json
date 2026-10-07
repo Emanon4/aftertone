@@ -593,5 +593,10 @@
   "albums": 52345,
   "withYear": 52287,
   "withGenre": 50102
+ },
+ "inferredArtistGroups": {
+  "method": "album genres + writing system, >=30% of tracks, max 2",
+  "artistsWithoutCurated": 2686,
+  "inferred": 2239
  }
 }
