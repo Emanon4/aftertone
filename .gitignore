@@ -53,3 +53,7 @@ next-env.d.ts
 /dist-pages/
 /.dev.vars*
 /worker-configuration.d.ts
+
+/.claude/
+/test-results/
+/playwright-report/

@@ -3,12 +3,13 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {DatabaseSync} from 'node:sqlite';
 import {build} from 'esbuild';
-const bundle=await build({stdin:{contents:'export * from "./worker/index.ts";export * from "./worker/jobs.ts";export * from "./lib/server/recommend.ts";export * from "./lib/server/catalog.ts";export * from "./lib/server/model-provider.ts";',resolveDir:process.cwd(),loader:'ts'},bundle:true,platform:'node',format:'esm',write:false});
-const {createApi,rankWithJev,rankWithCompatible,loadLibrarySample}=await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].contents).toString('base64')}`);
+const bundle=await build({stdin:{contents:'export * from "./worker/index.ts";export * from "./worker/jobs.ts";export * from "./lib/server/recommend.ts";export * from "./lib/server/catalog.ts";export * from "./lib/server/model-provider.ts";export * from "./worker/runner.ts";export * from "./lib/server/prerank.ts";',resolveDir:process.cwd(),loader:'ts'},bundle:true,platform:'node',format:'esm',write:false});
+const {createApi,rankWithJev,rankWithCompatible,loadLibrarySample,JobRunner,verifyCompatibleKey,prerankCandidates,explainTrack}=await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].contents).toString('base64')}`);
 const schema=await readFile(new URL('../worker/migrations/0001_jobs.sql',import.meta.url),'utf8');
 const personalSchema=await readFile(new URL('../worker/migrations/0002_personal_models.sql',import.meta.url),'utf8');
+const quotaSchema=await readFile(new URL('../worker/migrations/0003_quotas.sql',import.meta.url),'utf8');
 class LocalD1{
- constructor(beforeMigration){this.db=new DatabaseSync(':memory:');this.db.exec('PRAGMA foreign_keys=ON;');this.db.exec(schema);beforeMigration?.(this.db);this.db.exec(personalSchema);}
+ constructor(beforeMigration){this.db=new DatabaseSync(':memory:');this.db.exec('PRAGMA foreign_keys=ON;');this.db.exec(schema);beforeMigration?.(this.db);this.db.exec(personalSchema);this.db.exec(quotaSchema);}
  prepare(sql){
   const db=this.db;let values=[];const beforeFirst=()=>this.beforeFirst?.(sql,values);
   const execute=()=>{const stmt=db.prepare(sql);const rows=stmt.columns().length?stmt.all(...values):(stmt.run(...values),[]);return {success:true,results:rows,meta:{changes:db.prepare('SELECT changes() AS n').get().n}};};
@@ -22,8 +23,8 @@ const req=(path,body,method='POST',origin='https://emanon4.github.io',key)=>new 
 function setup(count=5000,fetcher,overrides={}){
  const db=new LocalD1();let calls=0,now=1_800_000_000_000;const seen=new Set(),authorizations=[];
  const mock=async(_url,opts)=>{calls++;authorizations.push(new Headers(opts.headers).get('Authorization'));const p=JSON.parse(opts.body);for(const id of Object.keys(p.questions)){assert.equal(seen.has(id),false);seen.add(id);}if(fetcher)return fetcher(p,calls);return Response.json({model:'mock',usage:{input_tokens:100,output_tokens:20},answers:Object.fromEntries(Object.keys(p.questions).map(k=>[k,{type:'score',score:2,confidence:.8}]))});};
- const env={DB:db,ASSETS:{fetch:async()=>new Response('',{status:404})},TYPESAFE_API_KEY:'test-only'};
- const api=createApi({now:()=>now,getTrack:async()=>seed,searchSongs:async()=>[seed],getLibraryManifest:async()=>({version:2,tracks:100000,artists:2000,previewable:100000,collectedAt:'2026-09-23',shards:[]}),recall:async(_s,_e,_d,_u,options)=>{assert.equal(options.limit,5000);return {seed,candidates:songs(count),libraryCount:100000,recallMeta:{targetCount:5000,rowsScanned:20000,shardsRead:10,returnedCount:count,scope:'bounded-index-sample-and-live-relations'}};},rankWithJev:(...args)=>rankWithJev(...args.slice(0,6),{...args[6],fetcher:mock}),...overrides});
+ const env={DB:db,ASSETS:{fetch:async()=>new Response('',{status:404})},TYPESAFE_API_KEY:'test-only',SITE_DAILY_ROUNDS:'30',CANDIDATE_LIMIT:'5000'};
+ const api=createApi({now:()=>now,getTrack:async()=>seed,searchSongs:async()=>[seed],getLibraryManifest:async()=>({version:2,tracks:100000,artists:2000,previewable:100000,collectedAt:'2026-09-23',shards:[]}),recall:async(_s,_e,_d,_u,options)=>{assert.equal(options.limit,5000);return {seed,candidates:songs(count),libraryCount:100000,recallMeta:{targetCount:5000,rowsScanned:20000,shardsRead:10,returnedCount:count,scope:'bounded-index-sample-and-live-relations'}};},rankWithJev:(...args)=>rankWithJev(...args.slice(0,6),{...args[6],fetcher:mock}),verifyCompatibleKey:async()=>true,verifyTurnstile:async()=>true,...overrides});
  return {db,env,api,authorizations,get calls(){return calls;},get seen(){return seen;},setNow:value=>{now=value;},now:()=>now};
 }
 const create=async f=>{const res=await f.api(req('/api/recommend',{seed:{id:'1',provider:'deezer'},direction:'sideways',notes:'',excluded:[]}),f.env);assert.equal(res.status,201);return res.json();};
@@ -184,4 +185,112 @@ test('personal Jev failures cannot persist an upstream response that echoes the 
  const f=setup(1,()=>new Response(`{"bad":"${key}"`));
  const job=await(await f.api(personalRequest('/api/recommend',personalBody,key),f.env)).json();
  const failed=await(await f.api(personalRequest(`/api/jobs/${job.jobId}/step`,{step:0},key),f.env)).json();assert.equal(failed.status,'failed');assert.equal(JSON.stringify(failed).includes(key),false);assert.equal(JSON.stringify(f.db.db.prepare('SELECT * FROM api_jobs').all()).includes(key),false);
+});
+
+// ---- Hardening: abuse limits, pre-ranking and server-side driving ----
+const body={seed:{id:'1',provider:'deezer'},direction:'close',notes:'',excluded:[]};
+const withIp=(path,b,ip,extra={})=>new Request(`https://api.example${path}`,{method:'POST',headers:{Origin:'https://emanon4.github.io','Content-Type':'application/json','CF-Connecting-IP':ip,...extra},body:JSON.stringify(b)});
+test('writes without a browser Origin are rejected; reads stay public',async()=>{
+ const f=setup(5);
+ const post=await f.api(new Request('https://api.example/api/recommend',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}),f.env);assert.equal(post.status,403);
+ const get=await f.api(new Request('https://api.example/api/library'),f.env);assert.equal(get.status,200);
+ assert.equal(f.db.db.prepare('SELECT COUNT(*) AS n FROM api_jobs').get().n,0);
+});
+test('per-IP daily limit stops one visitor before recall, without storing the raw IP',async()=>{
+ let recalls=0;const f=setup(5,undefined,{recall:async()=>{recalls++;return {seed,candidates:songs(5),libraryCount:1,recallMeta:{}};}});f.env.IP_DAILY_ROUNDS='2';
+ for(let i=0;i<2;i++)assert.equal((await f.api(withIp('/api/recommend',body,'203.0.113.9'),f.env)).status,201);
+ const blocked=await f.api(withIp('/api/recommend',body,'203.0.113.9'),f.env);assert.equal(blocked.status,429);assert.equal(recalls,2);
+ assert.equal((await f.api(withIp('/api/recommend',body,'198.51.100.4'),f.env)).status,201);
+ assert.equal(JSON.stringify(f.db.db.prepare('SELECT * FROM api_rate_budget').all()).includes('203.0.113.9'),false);
+});
+test('Turnstile, when configured, must pass before any quota or recall is spent',async()=>{
+ let verified=0;const f=setup(5,undefined,{verifyTurnstile:async(_secret,token)=>{verified++;return token==='good';}});f.env.TURNSTILE_SECRET_KEY='secret';
+ assert.equal((await f.api(req('/api/recommend',body),f.env)).status,403);
+ assert.equal((await f.api(req('/api/recommend',{...body,turnstileToken:'bad'}),f.env)).status,403);
+ assert.equal(f.db.db.prepare('SELECT COUNT(*) AS n FROM api_daily_budget').get().n,0);
+ assert.equal((await f.api(req('/api/recommend',{...body,turnstileToken:'good'}),f.env)).status,201);assert.equal(verified,2);
+});
+test('an invalid compatible key is rejected before recall and before any personal quota',async()=>{
+ let recalls=0;const f=setup(5,undefined,{verifyCompatibleKey:async()=>false,recall:async()=>{recalls++;return {seed,candidates:songs(5),libraryCount:1,recallMeta:{}};}});
+ const cfg={provider:'openai-compatible',baseUrl:'https://api.openai.com/v1',model:'any-model'};
+ const response=await f.api(req('/api/recommend',{...body,modelConfig:cfg},'POST','https://emanon4.github.io','random-guess'),f.env);
+ assert.equal(response.status,401);assert.equal(recalls,0);assert.equal(f.db.db.prepare('SELECT COUNT(*) AS n FROM api_personal_daily_budget').get().n,0);
+});
+test('a global ceiling bounds personal-key jobs however many random keys are used',async()=>{
+ const f=setup(1);f.env.PERSONAL_GLOBAL_DAILY_ROUNDS='3';
+ const statuses=[];for(let i=0;i<5;i++)statuses.push((await f.api(req('/api/recommend',{...body,modelConfig:{provider:'jev'}},'POST','https://emanon4.github.io',`random-key-${i}`),f.env)).status);
+ assert.deepEqual(statuses,[201,201,201,429,429]);
+});
+test('verifyCompatibleKey only rejects explicit 401/403 from an allow-listed base',async()=>{
+ const cfg={provider:'openai-compatible',baseUrl:'https://api.deepseek.com/v1',model:'m'};
+ for(const [status,ok] of [[200,true],[401,false],[403,false],[404,true],[500,true]]){
+  let seenUrl;assert.equal(await verifyCompatibleKey(cfg,'k',async url=>{seenUrl=url;return new Response('',{status});}),ok);assert.equal(seenUrl,'https://api.deepseek.com/v1/models');
+ }
+ assert.equal(await verifyCompatibleKey(cfg,'k',async()=>{throw new Error('offline');}),true);
+});
+test('default pre-ranking scores 600 candidates in two steps instead of 5000',async()=>{
+ const f=setup(5000);delete f.env.CANDIDATE_LIMIT;
+ const job=await(await f.api(req('/api/recommend',body),f.env)).json();
+ assert.equal(job.progress.totalCount,600);assert.equal(job.totalSteps,2);assert.equal(job.progress.totalBatches,5);
+ const lib=await(await f.api(req('/api/library',null,'GET'),f.env)).json();assert.equal(lib.candidateLimit,600);
+});
+test('pre-ranking prefers documented relations, keeps an exploration share and honours avoided artists',()=>{
+ const s={...seed,artist:'Seed',collectionGroups:['indie']};
+ const pool=[...Array.from({length:300},(_,i)=>({...seed,id:String(i+10),artist:`Rel ${i}`,title:`R${i}`,source:'关联艺术家',collectionGroups:['indie']})),
+  ...Array.from({length:3000},(_,i)=>({...seed,id:String(i+5000),artist:`Open ${i}`,title:`O${i}`,source:'曲库开放探索',collectionGroups:['metal']}))];
+ const r=prerankCandidates(s,pool,'close',400,()=>.5);
+ assert.equal(r.candidates.length,400);assert.equal(r.explorationCount,40);
+ assert.equal(r.candidates.filter(t=>t.source==='关联艺术家').length,300);
+ const avoided=prerankCandidates(s,pool,'close',400,()=>.5,['Rel 0','rel 1']);assert.equal(avoided.candidates.some(t=>t.artist==='Rel 0'||t.artist==='Rel 1'),false);
+ const small=prerankCandidates(s,pool.slice(0,10),'bold',400);assert.equal(small.candidates.length,10);
+});
+test('avoidArtists from structured feedback never reach the scored candidates',async()=>{
+ const f=setup(50);const job=await(await f.api(req('/api/recommend',{...body,avoidArtists:['Artist 3','Artist 4']}),f.env)).json();
+ const stored=f.db.db.prepare('SELECT candidates_json FROM api_job_steps WHERE job_id=?').all(job.jobId).flatMap(r=>JSON.parse(r.candidates_json));
+ assert.equal(stored.length,48);assert.equal(stored.some(t=>['Artist 3','Artist 4'].includes(t.artist)),false);
+});
+test('reasons describe metadata links, not sound',()=>{
+ const s={...seed,artist:'Men I Trust',year:'2018',collectionGroups:['indie']};
+ assert.equal(explainTrack({...seed,source:'关联艺术家',collectionGroups:['indie'],year:'2020'},s),'Men I Trust 的关联艺人 · 同属「独立」 · 年代相近（2020）');
+ assert.match(explainTrack({...seed,source:'曲库开放探索'},s),/开放探索/);
+});
+test('job polling is read-only until a deadline or lease passes',async()=>{
+ const f=setup(5);const job=await create(f);let writes=0;const prepare=f.db.prepare.bind(f.db);
+ f.db.prepare=sql=>{if(/^\s*(UPDATE|INSERT|DELETE)/i.test(sql))writes++;return prepare(sql);};
+ for(let i=0;i<5;i++)assert.equal((await(await f.api(req(`/api/jobs/${job.jobId}`,null,'GET'),f.env)).json()).status,'pending');
+ assert.equal(writes,0);
+});
+class FakeStorage{constructor(){this.map=new Map();this.alarm=null;}async get(k){return this.map.get(k);}async put(k,v){this.map.set(k,v);}async deleteAll(){this.map.clear();this.alarm=null;}async setAlarm(t){this.alarm=t;}}
+test('JobRunner drives every step server-side and stops when the job is done',async()=>{
+ const f=setup(1200);const job=await create(f);const storage=new FakeStorage();
+ const runner=new JobRunner({storage},f.env,{rankWithJev:(...a)=>rankWithJev(...a.slice(0,6),{...a[6],fetcher:async(_u,o)=>scoreResponse(JSON.parse(o.body))}),rankWithCompatible,now:f.now});
+ assert.equal((await runner.fetch(new Request('https://job-runner/start',{method:'POST',body:JSON.stringify({jobId:job.jobId})}))).status,202);
+ for(let i=0;i<10&&storage.alarm!==null;i++)await runner.alarm();
+ const done=await(await f.api(req(`/api/jobs/${job.jobId}`,null,'GET'),f.env)).json();
+ assert.equal(done.status,'done');assert.equal(done.progress.scoredCount,1200);assert.equal(storage.alarm,null);assert.equal(storage.map.size,0);
+});
+test('JobRunner never stores a personal key and hands over to the browser after eviction',async()=>{
+ const f=setup(5);const job=await(await f.api(personalRequest('/api/recommend',personalBody),f.env)).json();const storage=new FakeStorage();
+ const runner=new JobRunner({storage},f.env,{rankWithJev,rankWithCompatible,now:f.now});
+ await runner.fetch(new Request('https://job-runner/start',{method:'POST',headers:{'X-Model-Api-Key':'personal-test-key-one'},body:JSON.stringify({jobId:job.jobId})}));
+ assert.equal(JSON.stringify([...storage.map]).includes('personal-test-key-one'),false);
+ const evicted=new JobRunner({storage},f.env,{rankWithJev,rankWithCompatible,now:f.now});await evicted.alarm();
+ assert.equal(storage.alarm,null);assert.equal(f.db.db.prepare('SELECT status FROM api_jobs').get().status,'pending');assert.equal(f.calls,0);
+});
+test('a busy lease makes the runner wait instead of running the same step twice',async()=>{
+ const f=setup(5);const job=await create(f);f.db.db.prepare("UPDATE api_jobs SET status='running',lease_token='browser',lease_until=? WHERE id=?").run(f.now()+60_000,job.jobId);
+ const storage=new FakeStorage();await storage.put('jobId',job.jobId);const runner=new JobRunner({storage},f.env,{rankWithJev,rankWithCompatible,now:f.now});
+ await runner.alarm();assert.equal(storage.alarm,f.now()+2000);assert.equal(f.calls,0);
+});
+class FakeCache{constructor(){this.map=new Map();}async match(r){const v=this.map.get(r.url);return v?new Response(v):undefined;}async put(r,res){this.map.set(r.url,await res.text());}}
+test('music lookups are cached at the edge and only provider round-trips count against the limiter',async()=>{
+ let searches=0,limited=0;const cache=new FakeCache();
+ const f=setup(1,undefined,{cache,searchSongs:async()=>{searches++;return [seed];}});
+ f.env.MUSIC_LIMITER={limit:async()=>{limited++;return {success:limited<=1};}};
+ const get=q=>f.api(new Request(`https://api.example/api/music?q=${q}`,{headers:{Origin:'https://emanon4.github.io','CF-Connecting-IP':'203.0.113.7'}}),f.env);
+ assert.equal((await get('Radiohead')).status,200);
+ const again=await get('radiohead');assert.equal(again.status,200);assert.equal((await again.json()).tracks.length,1);
+ assert.equal(searches,1);assert.equal(limited,1);
+ const other=await get('Lamp');assert.equal(other.status,429);assert.equal(searches,1);
+ assert.equal((await get('x')).status,400);
 });

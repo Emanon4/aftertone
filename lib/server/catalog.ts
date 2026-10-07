@@ -4,10 +4,44 @@ import { clean, selectCandidatePool } from "./recall";
 
 export type CatalogManifest = {
  version: number; tracks: number; artists: number; previewable: number; collectedAt: string;
- shards?: { file: string; count: number; groups: string[] }[];
+ collectionGroups?: string[]; shards?: { file: string; count: number; groups: string[] }[];
 };
+type Artist = { id: string; name: string; groups: string[]; inferredGroups?: string[] };
+/** Curated groups first; otherwise groups inferred offline from album genres (scripts/infer-artist-groups.mjs). */
+const artistGroups = (a?: Artist) => a ? (a.groups.length ? a.groups : a.inferredGroups || []) : [];
+/** Writing system as a weak cue: kana/Hangul → japan-korea, Han → mandarin-cantonese. */
+export const scriptGroup = (text: string) => /[\u3040-\u30ff\uac00-\ud7af\u1100-\u11ff]/.test(text) ? "japan-korea" : /[\u3400-\u9fff]/.test(text) ? "mandarin-cantonese" : null;
+/**
+ * Groups for a seed whose artist has none: vote among the live related/radio artists found in the
+ * artist table (a group needs a quarter of them, at most two), plus the seed's writing system.
+ */
+export function voteSeedGroups(seed: Track, hintArtists: string[], artists: Artist[]): string[] {
+ const byName = new Map(artists.map(a => [clean(a.name), a]));
+ const found = [...new Set(hintArtists.map(clean))].map(n => byName.get(n)).filter((a): a is Artist => Boolean(a) && artistGroups(a).length > 0);
+ const counts = new Map<string, number>();
+ for (const a of found) for (const g of artistGroups(a)) counts.set(g, (counts.get(g) || 0) + 1);
+ const voted = [...counts].filter(([, n]) => n >= Math.max(2, found.length / 4)).sort((x, y) => y[1] - x[1]).slice(0, 2).map(([g]) => g);
+ const script = scriptGroup(`${seed.title} ${seed.artist} ${seed.album}`);
+ return [...new Set([...voted, ...(script ? [script] : [])])];
+}
+/** v3 rows: [id, title, artistIndex, albumIndex, duration, groupMask, previewable]; albums: [id, title, coverHash, year, genres]. */
+export type CompactShard = { albums: [string, string, string, string | null, string[] | null][]; tracks: [string, string, number, number, number, number, 0 | 1][] };
+/** Expand a compact shard back into Track objects (see scripts/compact-catalog.mjs). */
+export function expandCompactShard(shard: CompactShard, artists: Artist[], groups: string[]): Track[] {
+ if (!shard || !Array.isArray(shard.albums) || !Array.isArray(shard.tracks)) throw new Error("歌曲索引格式无效。");
+ return shard.tracks.map(([id, title, ai, ali, duration, mask, preview]) => {
+  const album = shard.albums[ali], artist = artists[ai];
+  if (!album || !artist || !/^[0-9a-f]{32}$/.test(album[2])) throw new Error("歌曲索引格式无效。");
+  const [albumId, albumTitle, cover, year, genres] = album;
+  return { id, provider: "deezer", title, artist: artist.name, artistId: artist.id, album: albumTitle, albumId,
+   image: `https://cdn-images.dzcdn.net/images/cover/${cover}/500x500-000000-80-0-0.jpg`, url: `https://www.deezer.com/track/${id}`,
+   duration, previewAvailable: preview === 1, collectionGroups: groups.filter((_, bit) => mask & (1 << bit)),
+   ...(year ? { year } : {}), ...(genres?.length ? { genre: genres.join(", ") } : {}) };
+ });
+}
 export type AssetReader = { fetch: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response> };
-export type CatalogOptions = { assets?: AssetReader; limit?: number; maxRows?: number; random?: () => number };
+export type CatalogOptions = { assets?: AssetReader; limit?: number; maxRows?: number; random?: () => number; hintArtists?: string[] };
+const SHARD_FILE: Record<number, RegExp> = { 2: /^part-\d{3,6}\.json$/, 3: /^shard-\d{3,6}\.json$/ };
 export const libraryStats = { tracks: legacyManifest.tracks, artists: legacyManifest.artists, previewable: legacyManifest.previewable, collectedAt: legacyManifest.collectedAt };
 const MAX_ROWS = 20_000;
 async function readJson(response: Response, maxBytes = 4_000_000): Promise<unknown> {
@@ -26,8 +60,10 @@ export async function getLibraryManifest(requestUrl = "http://localhost", assets
  const response = await assetFetch("/catalog/manifest.json", requestUrl, assets);
  if (response.status === 404) return { version: 1, ...libraryStats };
  const value = await readJson(response, 1_000_000) as CatalogManifest;
- if (value.version !== 2 || !Number.isInteger(value.tracks) || value.tracks < 0 || !Array.isArray(value.shards)
-  || value.shards.some(s => !/^part-\d{3,6}\.json$/.test(s.file) || !Number.isInteger(s.count) || s.count < 0 || s.count > MAX_ROWS || !Array.isArray(s.groups))) {
+ const file = SHARD_FILE[value.version];
+ if (!file || !Number.isInteger(value.tracks) || value.tracks < 0 || !Array.isArray(value.shards)
+  || (value.version === 3 && !Array.isArray(value.collectionGroups))
+  || value.shards.some(s => !file.test(s.file) || !Number.isInteger(s.count) || s.count < 0 || s.count > MAX_ROWS || !Array.isArray(s.groups))) {
   throw new Error("歌曲索引清单无效，请稍后重试。");
  }
  return value;
@@ -46,10 +82,12 @@ export async function loadLibrarySample(seed: Track, requestUrl: string, options
   return { seed, tracks, manifest, shardsRead: 1, rowsScanned: tracks.length };
  }
  const artistsResponse = await assetFetch("/catalog/artists.json", requestUrl, options.assets);
- const artists = await readJson(artistsResponse, 3_000_000) as { id: string; name: string; groups: string[] }[];
+ const artists = await readJson(artistsResponse, 3_000_000) as Artist[];
  if (!Array.isArray(artists)) throw new Error("艺术家索引格式无效。");
  const entry = artists.find(a => clean(a.name) === clean(seed.artist));
- seed = { ...seed, collectionGroups: [...new Set([...(seed.collectionGroups || []), ...(entry?.groups || [])])] };
+ let own = artistGroups(entry), groupSource = entry?.groups.length ? "curated" : own.length ? "inferred" : "none";
+ if (!own.length) { own = voteSeedGroups(seed, options.hintArtists || [], artists); if (own.length) groupSource = "related-artists"; }
+ seed = { ...seed, collectionGroups: [...new Set([...(seed.collectionGroups || []), ...own])] };
  const groups = new Set(seed.collectionGroups || []);
  const preferred = shuffled(manifest.shards!.filter(s => s.groups.some(g => groups.has(g))), random);
  const global = shuffled(manifest.shards!, random);
@@ -62,13 +100,15 @@ export async function loadLibrarySample(seed: Track, requestUrl: string, options
    seen.add(shard.file); selected.push(shard); expectedRows += shard.count;
   }
  }
- const tracks: Track[] = [];
- for (const shard of selected) {
+ // Shards are independent: fetch them in parallel instead of one after another.
+ const loaded = await Promise.all(selected.map(async shard => {
   const value = await readJson(await assetFetch(`/catalog/${shard.file}`, requestUrl, options.assets));
-  if (!Array.isArray(value) || value.length !== shard.count) throw new Error("歌曲索引正在更新，请稍后重试。");
-  tracks.push(...value as Track[]);
- }
- return { seed, tracks, manifest, shardsRead: selected.length, rowsScanned: tracks.length };
+  const rows = manifest.version === 3 ? expandCompactShard(value as CompactShard, artists, manifest.collectionGroups!) : value as Track[];
+  if (!Array.isArray(rows) || rows.length !== shard.count) throw new Error("歌曲索引正在更新，请稍后重试。");
+  return rows;
+ }));
+ const tracks = loaded.flat();
+ return { seed, tracks, manifest, shardsRead: selected.length, rowsScanned: tracks.length, groupSource };
 }
 
 type Raw = {
@@ -94,19 +134,19 @@ export const deezer = (path: string, ttl?: number) => providerFetch(`https://api
 export function normalizeDeezer(t: Raw, source?: string): Track {
  return { id: String(t.id), provider: "deezer", title: t.title, artist: t.artist.name, artistId: String(t.artist.id), album: t.album?.title || "", albumId: t.album?.id ? String(t.album.id) : undefined, image: t.album?.cover_big || t.album?.cover_medium || "", url: t.link || `https://www.deezer.com/track/${t.id}`, duration: t.duration, preview: t.preview || undefined, previewAvailable: !!t.preview && t.readable !== false, isrc: t.isrc, year: t.release_date?.slice(0, 4), bpm: (t.bpm || 0) > 0 ? t.bpm : undefined, source };
 }
-function normalizeApple(t: Raw): Track {
- return { id: String(t.trackId), provider: "itunes", country: "SG", title: t.trackName, artist: t.artistName, artistId: String(t.artistId), album: t.collectionName || "", image: t.artworkUrl100?.replace("100x100bb", "600x600bb") || "", url: t.trackViewUrl, duration: Math.round(t.trackTimeMillis / 1000), preview: t.previewUrl, genre: t.primaryGenreName, year: t.releaseDate?.slice(0, 4) };
+function normalizeApple(t: Raw, country = "SG"): Track {
+ return { id: String(t.trackId), provider: "itunes", country, title: t.trackName, artist: t.artistName, artistId: String(t.artistId), album: t.collectionName || "", image: t.artworkUrl100?.replace("100x100bb", "600x600bb") || "", url: t.trackViewUrl, duration: Math.round(t.trackTimeMillis / 1000), preview: t.previewUrl, genre: t.primaryGenreName, year: t.releaseDate?.slice(0, 4) };
 }
-export async function searchSongs(query: string): Promise<Track[]> {
+export async function searchSongs(query: string, country = "SG"): Promise<Track[]> {
  const calls = [deezer(`search?q=${encodeURIComponent(query)}&limit=16`).then(x => (x.data || []).filter((t: Raw) => t.readable !== false).map((t: Raw) => normalizeDeezer(t)))];
- if (/[\u3400-\u9fff]/.test(query)) calls.push(providerFetch(`https://itunes.apple.com/search?term=${encodeURIComponent(query)}&entity=song&limit=12&country=SG`, 60_000).then(x => x.results.filter((t: Raw) => t.kind === "song").map(normalizeApple)));
+ if (/[\u3400-\u9fff]/.test(query)) calls.push(providerFetch(`https://itunes.apple.com/search?term=${encodeURIComponent(query)}&entity=song&limit=12&country=${country}`, 60_000).then(x => x.results.filter((t: Raw) => t.kind === "song").map(t => normalizeApple(t, country))));
  const results = await Promise.allSettled(calls); const tracks = results.flatMap(r => r.status === "fulfilled" ? r.value : []);
  if (!tracks.length && results.every(r => r.status === "rejected")) throw new Error("搜歌服务暂时不可用，请稍后重试。");
  const seen = new Set<string>(); return tracks.filter(t => { const k = clean(t.title) + "|" + clean(t.artist); if (seen.has(k)) return false; seen.add(k); return true; }).slice(0, 20);
 }
-export async function getTrack(id: string, provider = "deezer"): Promise<Track> {
+export async function getTrack(id: string, provider = "deezer", country = "SG"): Promise<Track> {
  if (!/^\d{1,18}$/.test(id)) throw new Error("歌曲编号无效。");
- if (provider === "itunes") { const x = await providerFetch(`https://itunes.apple.com/lookup?id=${id}&country=SG`, 0); if (!x.results?.[0]?.trackId) throw new Error("这首歌目前无法取得，请重新搜索。"); return normalizeApple(x.results[0]); }
+ if (provider === "itunes") { const x = await providerFetch(`https://itunes.apple.com/lookup?id=${id}&country=${country}`, 0); if (!x.results?.[0]?.trackId) throw new Error("这首歌目前无法取得，请重新搜索。"); return normalizeApple(x.results[0], country); }
  return normalizeDeezer(await deezer(`track/${id}`, 0));
 }
 async function enrichSeed(seed: Track): Promise<Track> {
@@ -115,8 +155,7 @@ async function enrichSeed(seed: Track): Promise<Track> {
  catch { return seed; }
 }
 export async function recall(seed: Track, excluded: string[], direction = "close", requestUrl = "http://localhost", options: CatalogOptions = {}) {
- const loaded = await loadLibrarySample(seed, requestUrl, options);
- seed = await enrichSeed(loaded.seed);
+ // Live relations first: they also tell us which index shards to read when the seed artist has no groups.
  let artistId = seed.provider === "deezer" ? seed.artistId : undefined;
  if (!artistId) { try { const data = await deezer(`search/artist?q=${encodeURIComponent(seed.artist)}&limit=5`); const match = data.data?.find((a: Raw) => clean(a.name) === clean(seed.artist)); artistId = match ? String(match.id) : undefined; } catch { /* The local index remains available. */ } }
  const live: Track[] = [];
@@ -127,7 +166,18 @@ export async function recall(seed: Track, excluded: string[], direction = "close
    try { const data = await deezer(`artist/${a.id}/top?limit=12`); live.push(...(data.data || []).filter((t: Raw) => t.readable !== false).map((t: Raw) => normalizeDeezer(t, "关联艺术家"))); } catch { /* Missing provider data stays unknown. */ }
   }));
  }
+ const loaded = await loadLibrarySample(seed, requestUrl, { ...options, hintArtists: live.map(t => t.artist) });
+ seed = await enrichSeed(loaded.seed);
+ // A seed album without genres (common for Mandarin catalogues on Deezer) borrows the most common
+ // album genres of its Deezer-related artists, under an explicitly named field.
+ if (!seed.genre) {
+  const related = new Set(live.map(t => clean(t.artist)));
+  const counts = new Map<string, number>();
+  for (const t of loaded.tracks) if (related.has(clean(t.artist))) for (const g of (t.genre || "").split(",").map(x => x.trim()).filter(Boolean)) counts.set(g, (counts.get(g) || 0) + 1);
+  const top = [...counts].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([g]) => g);
+  if (top.length) seed = { ...seed, relatedArtistAlbumGenres: top };
+ }
  const candidates = selectCandidatePool(seed, loaded.tracks, live, excluded, direction, options.limit || 5000, options.random);
  if (!candidates.length) throw new Error("这一方向暂时没有新的可试听歌曲，试试另一个起点。");
- return { seed, candidates, libraryCount: loaded.manifest.tracks, recallMeta: { targetCount: options.limit || 5000, rowsScanned: loaded.rowsScanned, shardsRead: loaded.shardsRead, returnedCount: candidates.length, scope: "bounded-index-sample-and-live-relations" } };
+ return { seed, candidates, libraryCount: loaded.manifest.tracks, recallMeta: { targetCount: options.limit || 5000, rowsScanned: loaded.rowsScanned, shardsRead: loaded.shardsRead, seedGroups: seed.collectionGroups, groupSource: "groupSource" in loaded ? loaded.groupSource : "none", returnedCount: candidates.length, scope: "bounded-index-sample-and-live-relations" } };
 }

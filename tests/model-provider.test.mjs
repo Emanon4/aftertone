@@ -89,7 +89,7 @@ test('notes retain independent fit and request questions and combine only valida
  }},'Documented slow tempo');
  assert.equal(calls,3);assert.equal(questions,260);assert.equal(result.actualScoredCount,130);
  assert.ok(Math.abs(result.tracks[0].score-(.9*3*.55+.3*3*.45))<1e-10);
- assert.ok(result.tracks.every(track=>track.reason==='来自 Seed Artist 的关联艺术家。'));
+ assert.ok(result.tracks.every(track=>track.reason==='Seed Artist 的关联艺人'));
  assert.equal(JSON.stringify(result).includes('Invented guitar'),false);assert.equal(JSON.stringify(result).includes('confidence'),false);
 });
 
