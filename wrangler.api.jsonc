@@ -1,7 +1,7 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "aftertone-api",
-  "main": "worker/index.ts",
+  "main": "worker/main.ts",
   "compatibility_date": "2026-05-22",
   "compatibility_flags": ["nodejs_compat"],
   "assets": {
@@ -15,6 +15,23 @@
     "database_id": "3a81b1bb-d4b1-4d90-ab33-4ee6e918f453",
     "migrations_dir": "worker/migrations"
   }],
+  // One SQLite-backed Durable Object per job drives its steps with alarms.
+  "durable_objects": {
+    "bindings": [{ "name": "JOB_RUNNER", "class_name": "JobRunner" }]
+  },
+  "migrations": [{ "tag": "v1-job-runner", "new_sqlite_classes": ["JobRunner"] }],
+  // Optional: move the catalog to R2 (see docs/deploy.md), then uncomment.
+  // "r2_buckets": [{ "binding": "CATALOG", "bucket_name": "aftertone-catalog" }],
+  "vars": {
+    "ALLOWED_ORIGINS": "https://emanon4.github.io",
+    "CANDIDATE_LIMIT": "600",
+    "SITE_DAILY_ROUNDS": "100",
+    "PERSONAL_DAILY_ROUNDS": "30",
+    "IP_DAILY_ROUNDS": "20",
+    "PERSONAL_GLOBAL_DAILY_ROUNDS": "300",
+    "ITUNES_COUNTRY": "SG"
+  },
+  // TURNSTILE_SITE_KEY can be a var; TURNSTILE_SECRET_KEY and IP_HASH_SALT must be secrets.
   "secrets": { "required": ["TYPESAFE_API_KEY"] },
   "observability": { "enabled": true, "head_sampling_rate": 1 }
 }

@@ -94,19 +94,19 @@ export const deezer = (path: string, ttl?: number) => providerFetch(`https://api
 export function normalizeDeezer(t: Raw, source?: string): Track {
  return { id: String(t.id), provider: "deezer", title: t.title, artist: t.artist.name, artistId: String(t.artist.id), album: t.album?.title || "", albumId: t.album?.id ? String(t.album.id) : undefined, image: t.album?.cover_big || t.album?.cover_medium || "", url: t.link || `https://www.deezer.com/track/${t.id}`, duration: t.duration, preview: t.preview || undefined, previewAvailable: !!t.preview && t.readable !== false, isrc: t.isrc, year: t.release_date?.slice(0, 4), bpm: (t.bpm || 0) > 0 ? t.bpm : undefined, source };
 }
-function normalizeApple(t: Raw): Track {
- return { id: String(t.trackId), provider: "itunes", country: "SG", title: t.trackName, artist: t.artistName, artistId: String(t.artistId), album: t.collectionName || "", image: t.artworkUrl100?.replace("100x100bb", "600x600bb") || "", url: t.trackViewUrl, duration: Math.round(t.trackTimeMillis / 1000), preview: t.previewUrl, genre: t.primaryGenreName, year: t.releaseDate?.slice(0, 4) };
+function normalizeApple(t: Raw, country = "SG"): Track {
+ return { id: String(t.trackId), provider: "itunes", country, title: t.trackName, artist: t.artistName, artistId: String(t.artistId), album: t.collectionName || "", image: t.artworkUrl100?.replace("100x100bb", "600x600bb") || "", url: t.trackViewUrl, duration: Math.round(t.trackTimeMillis / 1000), preview: t.previewUrl, genre: t.primaryGenreName, year: t.releaseDate?.slice(0, 4) };
 }
-export async function searchSongs(query: string): Promise<Track[]> {
+export async function searchSongs(query: string, country = "SG"): Promise<Track[]> {
  const calls = [deezer(`search?q=${encodeURIComponent(query)}&limit=16`).then(x => (x.data || []).filter((t: Raw) => t.readable !== false).map((t: Raw) => normalizeDeezer(t)))];
- if (/[\u3400-\u9fff]/.test(query)) calls.push(providerFetch(`https://itunes.apple.com/search?term=${encodeURIComponent(query)}&entity=song&limit=12&country=SG`, 60_000).then(x => x.results.filter((t: Raw) => t.kind === "song").map(normalizeApple)));
+ if (/[\u3400-\u9fff]/.test(query)) calls.push(providerFetch(`https://itunes.apple.com/search?term=${encodeURIComponent(query)}&entity=song&limit=12&country=${country}`, 60_000).then(x => x.results.filter((t: Raw) => t.kind === "song").map(t => normalizeApple(t, country))));
  const results = await Promise.allSettled(calls); const tracks = results.flatMap(r => r.status === "fulfilled" ? r.value : []);
  if (!tracks.length && results.every(r => r.status === "rejected")) throw new Error("搜歌服务暂时不可用，请稍后重试。");
  const seen = new Set<string>(); return tracks.filter(t => { const k = clean(t.title) + "|" + clean(t.artist); if (seen.has(k)) return false; seen.add(k); return true; }).slice(0, 20);
 }
-export async function getTrack(id: string, provider = "deezer"): Promise<Track> {
+export async function getTrack(id: string, provider = "deezer", country = "SG"): Promise<Track> {
  if (!/^\d{1,18}$/.test(id)) throw new Error("歌曲编号无效。");
- if (provider === "itunes") { const x = await providerFetch(`https://itunes.apple.com/lookup?id=${id}&country=SG`, 0); if (!x.results?.[0]?.trackId) throw new Error("这首歌目前无法取得，请重新搜索。"); return normalizeApple(x.results[0]); }
+ if (provider === "itunes") { const x = await providerFetch(`https://itunes.apple.com/lookup?id=${id}&country=${country}`, 0); if (!x.results?.[0]?.trackId) throw new Error("这首歌目前无法取得，请重新搜索。"); return normalizeApple(x.results[0], country); }
  return normalizeDeezer(await deezer(`track/${id}`, 0));
 }
 async function enrichSeed(seed: Track): Promise<Track> {
