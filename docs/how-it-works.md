@@ -26,8 +26,16 @@
 
 ```sh
 python3 scripts/rebuild-library.py --manifest data/catalog-manifest.json --output output/rebuilt-catalog
-node scripts/import-library.mjs output/rebuilt-catalog
+node scripts/import-library.mjs output/rebuilt-catalog      # 导入后自动转换为 v3 紧凑格式
+node scripts/enrich-albums.mjs --sample 200                # 先抽样看覆盖率，不改曲库
+node scripts/enrich-albums.mjs --rate 5                    # 补齐全部专辑的年份与风格（可断点续传）
 ```
+
+**v3 紧凑格式**（`scripts/compact-catalog.mjs`）：每个分片是 `{albums, tracks}`，歌曲行为 `[id, 歌名, 艺人下标, 专辑下标, 时长, 分组位掩码, 可试听]`，专辑行为 `[专辑 id, 专辑名, 封面哈希, 年份, 风格]`；艺人名在 `artists.json`，封面和歌曲链接由 ID 还原。转换时逐行还原比对，任何不一致都会中止。体积从 55MB 降到约 12MB，一次召回读取的 10 个分片从 8.2MB 降到 1.85MB。
+
+**年份与风格**来自 Deezer `/album` 接口的发行日期和专辑风格，按专辑写入，所以“风格”是专辑风格而非单曲风格。抽样 300 张专辑：年份 100%、风格约 96% 有值。全量约 5 万张专辑，按每秒 5 次请求约需 2.8 小时。
+
+**预排序质量对比**：`TYPESAFE_API_KEY=... node scripts/compare-prerank.mjs --seeds 8`。模型对每首候选单独提问，所以每个起点只需对完整召回池评分一次，就能精确算出“只评 600 首”会选出什么；结果写入 `output/prerank-comparison.json`。按 2026-09 的基准，每个起点约 160 万输入 token。
 
 有界采集公开元数据（最多 4 并发、3,000 次请求），不下载音频。后续扩库建议：
 

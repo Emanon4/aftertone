@@ -52,9 +52,15 @@ npx wrangler secret put TURNSTILE_SECRET_KEY --config wrangler.api.jsonc
 
 `JOB_RUNNER` Durable Object（SQLite 存储类，免费计划可用）在任务创建后用 alarm 逐步推进。个人 Key 只保存在该对象的内存中，不写入存储；对象被回收后，浏览器在 8 秒无进展时自动接手推进。两种推进方式共用 D1 租约，同一步不会被重复执行或重复计费。
 
+### 搜索缓存与限流
+
+`/api/music` 的搜索与单曲查询会写入 Cloudflare 边缘缓存（搜索 15 分钟、单曲 5 分钟，因为单曲带有短时效的试听签名）。**边缘缓存只在自定义域名上生效**：`*.workers.dev` 上 Cache API 是空操作，此时只有单实例内存缓存。给 Worker 绑定自定义域名（Workers → Settings → Domains）后自动启用。
+
+`MUSIC_LIMITER`（Workers Rate Limiting）限制每个 IP 每分钟 40 次真正打到 Deezer/iTunes 的请求，命中缓存不计数；在 `wrangler.api.jsonc` 的 `ratelimits` 中调整。
+
 ### 曲库放到 R2（可选）
 
-曲库约 55MB，目前随 Worker 静态资源发布。迁到 R2：
+曲库已压缩为 v3 紧凑格式（约 12MB），随 Worker 静态资源发布即可。如仍想迁到 R2：
 
 ```sh
 npx wrangler r2 bucket create aftertone-catalog
