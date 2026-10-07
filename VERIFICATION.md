@@ -1,5 +1,17 @@
 # 验证记录
 
+## 2026-10-06：界面改版与加固
+
+本节是本地验证，**尚未部署到生产**；生产项需在合并并部署后重新核对。
+
+- 自动化：单元/集成测试 100 项通过（新增：无 Origin 写请求拒绝、按 IP 每日限额、Turnstile、兼容 Key 预校验、个人 Key 全局上限、600 首预排序、按艺人排除、资料型推荐理由、只读轮询无写入、JobRunner 服务端推进与租约互斥、个人 Key 不入存储、备份导入导出与分享链接解析）。Playwright 端到端 10 项通过（桌面 1440 与 Pixel 7 各 5 项，API 为 mock）。`npm run lint`、`npm run typecheck`、`npm run build`、`npm run check:api` 通过。
+- 本地 wrangler + D1（迁移 0001–0003）：`/api/library` 返回 candidateLimit 600；无 Origin 的 POST 返回 403；搜索 Men I Trust 正常；创建任务返回 `driver: "server"`、600 首候选、2 步 5 批。使用假 Key 时，Durable Object 在没有任何浏览器 step 请求的情况下推进任务，真实 Jev 返回 401 后任务进入 failed，不产生部分结果。
+- 界面：「午夜玫瑰」深色与樱粉浅色在 1440 与 390 宽度截图检查，无水平溢出；CSS 由 176KB 降至约 26KB，运行时依赖由 27 个减至 4 个。
+- 默认兼容模型：DeepSeek 的 `deepseek-chat` 别名已于 2026-07-24 停用，模板改为 `deepseek-v4-flash`；OpenAI 模板改为 `gpt-4.1-mini`（GPT-5 系列不接受适配器发送的 temperature）。四个模板**仍未用真实账号调用验证**。
+- 未验证：生产部署、Turnstile 真实挑战、R2 曲库读取、600 首预排序相对 5,000 首的推荐质量差异。
+
+## 2026-09-23
+
 2026-09-23（Asia/Singapore）。
 
 ## 曲库与模型
@@ -42,7 +54,7 @@
 
 ## 发布范围
 
-公开 Pages 静态发布仓库为 `Emanon4/aftertone-pages`。源码 `Emanon4/aftertone` 已设置为 PUBLIC，包含 `LICENSE` 与 `THIRD_PARTY_NOTICES.md`。GitHub Pages 构建与部署已成功。
+（更正：2026-09-23 起 Pages 已改为由本仓库 GitHub Actions 直接发布，不再使用 `Emanon4/aftertone-pages`。）源码 `Emanon4/aftertone` 已设置为 PUBLIC，包含 `LICENSE` 与 `THIRD_PARTY_NOTICES.md`。GitHub Pages 构建与部署已成功。
 
 生产 Worker 已上线：`https://aftertone-api.moji-pet.workers.dev`。Cloudflare D1 已绑定，`0001` 和 `0002` 两次远端迁移已部署。生产实据保存在本地 `output/production-api-check.json`：
 
