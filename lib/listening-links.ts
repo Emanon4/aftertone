@@ -10,6 +10,7 @@ export type ListeningLink = {
 type ListeningTrack = Pick<Track, "id" | "provider" | "title" | "artist" | "url" | "country">;
 
 function exactSourceUrl(track: ListeningTrack): string | undefined {
+  // eslint-disable-next-line no-control-regex -- reject control characters and spaces in URLs
   if (!track.url || /[\u0000-\u0020\u007f]/.test(track.url)) return;
 
   let url: URL;

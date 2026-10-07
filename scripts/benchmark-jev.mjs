@@ -68,7 +68,7 @@ const fetcher=async(url,options)=>{
    await new Promise(r=>setTimeout(r,1));
    response=Response.json({model:'mock-not-real',usage:{input_tokens:questionIds.length*300,output_tokens:questionIds.length*20},answers:Object.fromEntries(questionIds.map(id=>[id,{type:'score',score:2,confidence:.8}]))});
   }
-  const body=await response.text();let data;try{data=JSON.parse(body);}catch{}
+  const body=await response.text();let data;try{data=JSON.parse(body);}catch{/* Non-JSON bodies are reported below. */}
   const record={status:response.status,wallMs:Math.round(performance.now()-started),candidateCount:candidateIds.length,questionCount:questionIds.length,requestBytes:Buffer.byteLength(options.body)};
   if(!response.ok)record.error=redact(body).slice(0,1600);
   const retryAfter=response.headers.get('retry-after');if(retryAfter)record.retryAfter=retryAfter;
