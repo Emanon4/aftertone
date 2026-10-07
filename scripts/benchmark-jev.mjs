@@ -5,6 +5,7 @@ import {createHash} from 'node:crypto';
 import {resolve,dirname,relative,extname} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {rankWithJev,readScore,JEV_DEFAULTS,JevScoringError} from '../lib/server/recommend.ts';
+import {expandCompactShard} from './catalog-format.mjs';
 
 const project=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const args=process.argv.slice(2);
@@ -31,11 +32,13 @@ const catalogDocument=JSON.parse(sourceBytes);
 const sourceFiles=[{path:relative(project,manifestPath),sha256:sha(sourceBytes)}];
 let library;
 if(Array.isArray(catalogDocument)){library=catalogDocument;}else{
- if(catalogDocument.version!==2||!Array.isArray(catalogDocument.shards))throw new Error('Expected a v2 catalog manifest or a legacy Track[] JSON file');
+ if(![2,3].includes(catalogDocument.version)||!Array.isArray(catalogDocument.shards))throw new Error('Expected a v2/v3 catalog manifest or a legacy Track[] JSON file');
  library=[];
+ const artists=catalogDocument.version===3?JSON.parse(await readFile(resolve(dirname(manifestPath),'artists.json'))):null;
  for(const shard of catalogDocument.shards){
-  if(!/^part-\d{3,6}\.json$/.test(shard.file))throw new Error('Invalid shard filename');
-  const filename=resolve(dirname(manifestPath),shard.file),bytes=await readFile(filename),tracks=JSON.parse(bytes);
+  if(!(catalogDocument.version===3?/^shard-\d{3,6}\.json$/:/^part-\d{3,6}\.json$/).test(shard.file))throw new Error('Invalid shard filename');
+  const filename=resolve(dirname(manifestPath),shard.file),bytes=await readFile(filename),parsed=JSON.parse(bytes);
+  const tracks=artists?expandCompactShard(parsed,artists,catalogDocument.collectionGroups):parsed;
   if(!Array.isArray(tracks)||tracks.length!==shard.count)throw new Error(`Invalid shard count: ${shard.file}`);
   sourceFiles.push({path:relative(project,filename),sha256:sha(bytes)});library.push(...tracks);
  }

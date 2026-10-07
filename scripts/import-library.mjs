@@ -1,6 +1,7 @@
 import { readFile, writeFile, mkdir, mkdtemp, readdir, rename, rm } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
 
 // Run from the destination project, or an empty temporary directory for validation.
 // Copy public metadata only: audio and signed preview URLs never enter the index.
@@ -189,3 +190,6 @@ try {
   await rm(path.join(catalogDir, 'library.json'), { force: true });
 } finally { await rm(staging, { recursive: true, force: true }); }
 console.log(JSON.stringify({ ...stats, shardCount: shards.length, duplicateRows: raw.length - tracks.length }, null, 2));
+// Publish the compact v3 format the Worker reads (verifies a full round trip before replacing files).
+const compacted = spawnSync(process.execPath, [path.resolve('scripts/compact-catalog.mjs'), catalogDir], { stdio: 'inherit' });
+if (compacted.status !== 0) throw new Error('catalog compaction failed; public/catalog still holds the v2 import');

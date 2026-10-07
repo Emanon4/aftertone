@@ -4,10 +4,27 @@ import { clean, selectCandidatePool } from "./recall";
 
 export type CatalogManifest = {
  version: number; tracks: number; artists: number; previewable: number; collectedAt: string;
- shards?: { file: string; count: number; groups: string[] }[];
+ collectionGroups?: string[]; shards?: { file: string; count: number; groups: string[] }[];
 };
+type Artist = { id: string; name: string; groups: string[] };
+/** v3 rows: [id, title, artistIndex, albumIndex, duration, groupMask, previewable]; albums: [id, title, coverHash, year, genres]. */
+export type CompactShard = { albums: [string, string, string, string | null, string[] | null][]; tracks: [string, string, number, number, number, number, 0 | 1][] };
+/** Expand a compact shard back into Track objects (see scripts/compact-catalog.mjs). */
+export function expandCompactShard(shard: CompactShard, artists: Artist[], groups: string[]): Track[] {
+ if (!shard || !Array.isArray(shard.albums) || !Array.isArray(shard.tracks)) throw new Error("歌曲索引格式无效。");
+ return shard.tracks.map(([id, title, ai, ali, duration, mask, preview]) => {
+  const album = shard.albums[ali], artist = artists[ai];
+  if (!album || !artist || !/^[0-9a-f]{32}$/.test(album[2])) throw new Error("歌曲索引格式无效。");
+  const [albumId, albumTitle, cover, year, genres] = album;
+  return { id, provider: "deezer", title, artist: artist.name, artistId: artist.id, album: albumTitle, albumId,
+   image: `https://cdn-images.dzcdn.net/images/cover/${cover}/500x500-000000-80-0-0.jpg`, url: `https://www.deezer.com/track/${id}`,
+   duration, previewAvailable: preview === 1, collectionGroups: groups.filter((_, bit) => mask & (1 << bit)),
+   ...(year ? { year } : {}), ...(genres?.length ? { genre: genres.join(", ") } : {}) };
+ });
+}
 export type AssetReader = { fetch: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response> };
 export type CatalogOptions = { assets?: AssetReader; limit?: number; maxRows?: number; random?: () => number };
+const SHARD_FILE: Record<number, RegExp> = { 2: /^part-\d{3,6}\.json$/, 3: /^shard-\d{3,6}\.json$/ };
 export const libraryStats = { tracks: legacyManifest.tracks, artists: legacyManifest.artists, previewable: legacyManifest.previewable, collectedAt: legacyManifest.collectedAt };
 const MAX_ROWS = 20_000;
 async function readJson(response: Response, maxBytes = 4_000_000): Promise<unknown> {
@@ -26,8 +43,10 @@ export async function getLibraryManifest(requestUrl = "http://localhost", assets
  const response = await assetFetch("/catalog/manifest.json", requestUrl, assets);
  if (response.status === 404) return { version: 1, ...libraryStats };
  const value = await readJson(response, 1_000_000) as CatalogManifest;
- if (value.version !== 2 || !Number.isInteger(value.tracks) || value.tracks < 0 || !Array.isArray(value.shards)
-  || value.shards.some(s => !/^part-\d{3,6}\.json$/.test(s.file) || !Number.isInteger(s.count) || s.count < 0 || s.count > MAX_ROWS || !Array.isArray(s.groups))) {
+ const file = SHARD_FILE[value.version];
+ if (!file || !Number.isInteger(value.tracks) || value.tracks < 0 || !Array.isArray(value.shards)
+  || (value.version === 3 && !Array.isArray(value.collectionGroups))
+  || value.shards.some(s => !file.test(s.file) || !Number.isInteger(s.count) || s.count < 0 || s.count > MAX_ROWS || !Array.isArray(s.groups))) {
   throw new Error("歌曲索引清单无效，请稍后重试。");
  }
  return value;
@@ -46,7 +65,7 @@ export async function loadLibrarySample(seed: Track, requestUrl: string, options
   return { seed, tracks, manifest, shardsRead: 1, rowsScanned: tracks.length };
  }
  const artistsResponse = await assetFetch("/catalog/artists.json", requestUrl, options.assets);
- const artists = await readJson(artistsResponse, 3_000_000) as { id: string; name: string; groups: string[] }[];
+ const artists = await readJson(artistsResponse, 3_000_000) as Artist[];
  if (!Array.isArray(artists)) throw new Error("艺术家索引格式无效。");
  const entry = artists.find(a => clean(a.name) === clean(seed.artist));
  seed = { ...seed, collectionGroups: [...new Set([...(seed.collectionGroups || []), ...(entry?.groups || [])])] };
@@ -62,12 +81,14 @@ export async function loadLibrarySample(seed: Track, requestUrl: string, options
    seen.add(shard.file); selected.push(shard); expectedRows += shard.count;
   }
  }
- const tracks: Track[] = [];
- for (const shard of selected) {
+ // Shards are independent: fetch them in parallel instead of one after another.
+ const loaded = await Promise.all(selected.map(async shard => {
   const value = await readJson(await assetFetch(`/catalog/${shard.file}`, requestUrl, options.assets));
-  if (!Array.isArray(value) || value.length !== shard.count) throw new Error("歌曲索引正在更新，请稍后重试。");
-  tracks.push(...value as Track[]);
- }
+  const rows = manifest.version === 3 ? expandCompactShard(value as CompactShard, artists, manifest.collectionGroups!) : value as Track[];
+  if (!Array.isArray(rows) || rows.length !== shard.count) throw new Error("歌曲索引正在更新，请稍后重试。");
+  return rows;
+ }));
+ const tracks = loaded.flat();
  return { seed, tracks, manifest, shardsRead: selected.length, rowsScanned: tracks.length };
 }
 
