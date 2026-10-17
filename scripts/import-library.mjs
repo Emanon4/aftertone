@@ -129,7 +129,7 @@ for (const [index, source] of raw.entries()) {
     }
     const entry = { track, artistKey, titleKey, recordingKey };
     byId.set(trackId, entry); byRecording.set(recordingKey, entry);
-  } catch (error) { throw new Error(`Invalid track metadata at row ${index + 1}: ${error.message}`); }
+  } catch (error) { throw new Error(`Invalid track metadata at row ${index + 1}: ${error.message}`, { cause: error }); }
 }
 
 const entries = [...byRecording.values()].sort((a, b) =>

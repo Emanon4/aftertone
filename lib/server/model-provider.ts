@@ -172,6 +172,7 @@ export async function rankWithCompatible(
  } catch (error) {
   if (error instanceof JevScoringError) throw new JevScoringError(scoringMessage(error, options.signal), withSizes(error.metrics));
   // Configuration/duplicate-input failures are also controlled; do not expose arbitrary injected errors.
+  // eslint-disable-next-line preserve-caught-error -- An error cause could retain private provider or input details.
   throw new Error("模型调用参数无效，尚未完成评分。");
  }
 }
