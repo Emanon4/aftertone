@@ -206,7 +206,11 @@ test('approved deployment bases work and invalid local options never start reque
  await rank(songs(1),{fetcher:async(url,init)=>{assert.equal(url,'https://gateway.example/api/v1/chat/completions');return mock(url,init);}},'',custom);
  let calls=0;const fetcher=async()=>{calls++;throw new Error('must not run');};
  for(const options of [{batchSize:0},{batchSize:NaN},{concurrency:-1},{concurrency:1.2},{timeoutMs:0}])await assert.rejects(rank(songs(1),{...options,fetcher}));
- await assert.rejects(rank([song(2),song(2)],{fetcher}));
+ await assert.rejects(rank([song('test-only-key'),song('test-only-key')],{fetcher}),error=>{
+  assert.equal(error.message,'模型调用参数无效，尚未完成评分。');
+  assert.equal(Object.hasOwn(error,'cause'),false,'the adapter must discard private error causes');
+  return true;
+ });
  assert.equal(calls,0);
 });
 
