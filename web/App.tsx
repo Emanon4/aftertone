@@ -2,15 +2,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowRight, Check, Disc3, Info, Share2, X } from "lucide-react";
 import featuredData from "@/lib/featured.json";
 import { modelRequestSnapshot, modelSettingsError, modelSettingsSummary, type ModelSettings } from "@/lib/model-settings";
-import { coverAt, trackKey, type Track } from "@/lib/music";
+import { coverAt, nameKey, trackKey, type Track } from "@/lib/music";
 import { lookupTrack, previewOnly, searchTracks, type Direction, type JobData } from "./lib/api";
 import { format, useI18n } from "./lib/i18n";
-import { download, mergeTracks, parseBackup, readShare, readStored, shareUrl, toBackup, toCsv, toText, withoutPreview, writeStored, type DismissReason, type DismissedTrack } from "./lib/storage";
+import { download, mergeTracks, parseBackup, readShare, readStoredTracks, shareUrl, toBackup, toCsv, toText, withoutPreview, writeStored, type DismissReason, type DismissedTrack } from "./lib/storage";
 import { getTurnstileToken } from "./lib/turnstile";
 import { useCoverColor } from "./hooks/useCoverColor";
 import { useLibrary } from "./hooks/useLibrary";
 import { usePlayer } from "./hooks/usePlayer";
-import { useRecommendJob } from "./hooks/useRecommendJob";
+import { StalledJobError, useRecommendJob } from "./hooks/useRecommendJob";
 import { DiscoveryConsole } from "./components/DiscoveryConsole";
 import { AboutDialog, Footer } from "./components/Footer";
 import { Header, type View } from "./components/Header";
@@ -34,12 +34,14 @@ export default function App() {
  const [seed, setSeed] = useState<Track | null>(null), [direction, setDirection] = useState<Direction>("close"), [notes, setNotes] = useState("");
  const [recommendations, setRecommendations] = useState<Track[] | null>(null), [round, setRound] = useState(0), [meta, setMeta] = useState<JobData | null>(null);
  const [shared, setShared] = useState<Track[] | null>(null);
- const [saved, setSaved] = useState<Track[]>(() => readStored(SAVED_KEY, []));
- const [dismissed, setDismissed] = useState<DismissedTrack[]>(() => readStored(DISMISSED_KEY, []));
+ const [saved, setSaved] = useState<Track[]>(() => readStoredTracks(SAVED_KEY));
+ const [dismissed, setDismissed] = useState<DismissedTrack[]>(() => readStoredTracks<DismissedTrack>(DISMISSED_KEY));
  const [focus, setFocus] = useState(0);
  const [error, setError] = useState(""), [toast, setToast] = useState("");
  const [modelSettings, setModelSettings] = useState<ModelSettings>({ mode: "site" }), [modelOpen, setModelOpen] = useState(false), [aboutOpen, setAboutOpen] = useState(false);
  const searchInput = useRef<HTMLInputElement | null>(null), searchAbort = useRef<AbortController | null>(null);
+ // Set while the human check runs, before the job hook reports busy: a second click must not start a second round.
+ const [starting, setStarting] = useState(false), startingRef = useRef(false);
 
  const showError = useCallback((message: string) => setError(message), []);
  const playerMessages = useMemo(() => ({ noPreview: t("error.noPreview"), playAgain: t("error.playAgain"), audio: t("error.audio") }), [t]);
@@ -77,7 +79,7 @@ export default function App() {
   job.resume().then(resumed => {
    if (!resumed || !Array.isArray(resumed.data.tracks)) return;
    setSeed(resumed.seed); setRecommendations(resumed.data.tracks); setShared(null); setRound(0); setFocus(0); setMeta(resumed.data);
-  }).catch(e => setError(e instanceof Error && e.message ? e.message : format(lang, "error.round")));
+  }).catch(e => setError(e instanceof StalledJobError ? format(lang, "error.resumeKey") : e instanceof Error && e.message ? e.message : format(lang, "error.round")));
   // eslint-disable-next-line react-hooks/exhaustive-deps -- resume once on load
  }, []);
 
@@ -91,7 +93,7 @@ export default function App() {
  const dismiss = (track: Track, reason: DismissReason) => {
   setDismissed(prev => [{ ...withoutPreview(track), dismissReason: reason }, ...prev.filter(x => trackKey(x) !== trackKey(track))].slice(0, 120));
   setSaved(prev => prev.filter(x => trackKey(x) !== trackKey(track)));
-  const sameArtist = (x: Track) => reason === "artist" && x.artist.toLowerCase() === track.artist.toLowerCase();
+  const sameArtist = (x: Track) => reason === "artist" && nameKey(x.artist) === nameKey(track.artist);
   setRecommendations(prev => prev?.filter(x => trackKey(x) !== trackKey(track) && !sameArtist(x)) ?? null);
   setFocus(0);
   setToast(t("toast.dismissed"));
@@ -119,11 +121,14 @@ export default function App() {
   if (issue) { setError(t(issue)); setModelOpen(true); return; }
   if (previewOnly) { setError(t("error.noService")); return; }
   if (modelSettings.mode !== "site" && library.byokAvailable === false) { setError(t("error.noByok")); setModelOpen(true); return; }
+  if (startingRef.current || job.busy) return;
   setError("");
   const snapshot = modelRequestSnapshot(modelSettings);
   let turnstileToken: string | undefined;
   if (library.turnstileSiteKey) {
+   startingRef.current = true; setStarting(true);
    try { turnstileToken = await getTurnstileToken(library.turnstileSiteKey, lang); } catch { setError(t("error.turnstile")); return; }
+   finally { startingRef.current = false; setStarting(false); }
   }
   const excluded = [...new Set([...dismissed, ...saved, ...(excludePrevious ? recommendations || [] : [])].map(trackKey))].slice(0, 150);
   const avoidArtists = [...new Set(dismissed.filter(d => d.dismissReason === "artist").map(d => d.artist))].slice(0, 30);
@@ -185,7 +190,7 @@ export default function App() {
       results={results} onCloseResults={() => setResults(null)} onPreview={player.play} onChoose={choose}
       seed={seed} onClearSeed={() => { job.cancel(); setSeed(null); setRecommendations(null); setMeta(null); }}
       direction={direction} onDirection={setDirection} notes={notes} onNotes={setNotes}
-      busy={job.busy} progress={job.progress} serverDriven={job.serverDriven} onFind={() => void recommend()} onCancel={job.cancel} previewOnly={previewOnly} />
+      busy={job.busy || starting} progress={job.progress} serverDriven={job.serverDriven} onFind={() => void recommend()} onCancel={job.cancel} previewOnly={previewOnly} />
      <button className="model-chip" onClick={() => setModelOpen(true)}>{modelChip}<ArrowRight size={13} /></button>
 
      {error && <div className="alert" role="alert"><Info size={18} /><span>{error}</span><button className="icon-btn" onClick={() => setError("")} aria-label={t("error.close")}><X size={16} /></button></div>}
@@ -193,7 +198,7 @@ export default function App() {
      <section className="rail" aria-label={railTitle}>
       <RailHead title={railTitle} note={recommendations ? `${t("rail.group", { n: pad(round + 1) })} · ${t("rail.from", { n: (roundMeta?.candidateCount ?? job.progress?.totalCount ?? 0).toLocaleString() })}` : undefined}>
        {visible.length > 0 && <button className="link-btn" onClick={() => void share(visible)}><Share2 size={14} />{t("rail.share")}</button>}
-       {recommendations && <button className="link-btn" onClick={next} disabled={job.busy}>{(round + 1) * 7 < recommendations.length ? t("rail.more") : t("rail.newRound")}<ArrowRight size={14} /></button>}
+       {recommendations && <button className="link-btn" onClick={next} disabled={job.busy || starting}>{(round + 1) * 7 < recommendations.length ? t("rail.more") : t("rail.newRound")}<ArrowRight size={14} /></button>}
       </RailHead>
       {visible.length ? <RecordRail tracks={visible} focus={focus} onFocus={setFocus} isPlaying={tr => player.isActive(tr) && player.playing} loadingKey={player.loading}
        onPlay={tr => player.play(tr)} isSaved={isSaved} onSave={save} showReason={recommendations !== null} busy={job.busy} />

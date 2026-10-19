@@ -14,6 +14,8 @@ npx wrangler secret put IP_HASH_SALT --config wrangler.api.jsonc   # 任意长�
 npm run deploy:api
 ```
 
+未设置 `IP_HASH_SALT` 时，Worker 用站点 Jev 密钥派生盐；两者都没有时拒绝找歌（503），不会退回公开的默认盐。
+
 之后每次升级：**先迁移，再部署**（`0003_quotas.sql` 新增限流表，新 Worker 依赖它）。
 
 ```sh
@@ -31,7 +33,7 @@ npm run deploy:api
 | `CANDIDATE_LIMIT` | `600` | 每轮交给模型评分的候选数（50–5000）。召回池固定最多 5,000 首 |
 | `SITE_DAILY_ROUNDS` | `100` | 站点 Jev 全站每日轮数（UTC 日） |
 | `PERSONAL_DAILY_ROUNDS` | `30` | 每把个人 Key 每日轮数 |
-| `IP_DAILY_ROUNDS` | `20` | 每个访问者（按加盐哈希的 IP）每日轮数 |
+| `IP_DAILY_ROUNDS` | `20` | 每个访问者（按加盐哈希的 IP，IPv6 按 /64）每日轮数；只有真正创建出任务才计数 |
 | `PERSONAL_GLOBAL_DAILY_ROUNDS` | `300` | 所有个人 Key 合计的每日上限，防止用随机 Key 刷新额度 |
 | `ITUNES_COUNTRY` | `SG` | 华语搜索使用的 iTunes 区域 |
 | `MODEL_BASE_URL_ALLOWLIST` | 空 | 额外允许的 OpenAI 兼容地址（仅部署方可设置） |

@@ -94,6 +94,15 @@ test('exploration avoids same artist and repeated artists',()=>{
 test('explicit live and decade constraints exclude conflicts and unknown years',()=>{
  const songs=[song(2,{title:'Track (Live)',year:'1995'}),song(3,{year:'1996'}),song(4,{year:'2001'}),song(5)];assert.deepEqual(applyExplicitFilters(songs,'不要现场版，想听90年代的歌').map(x=>x.id),['3']);
 });
+test('explicit filters respect where the negation sits',()=>{
+ const songs=[song(2,{title:'Track (Live)',year:'1995'}),song(3,{year:'1985'}),song(4,{title:'Track (Remix)',year:'2001'}),song(5)];
+ const ids=notes=>applyExplicitFilters(songs,notes).map(x=>x.id);
+ assert.deepEqual(ids('我非常喜欢现场版'),['2','3','4','5']);
+ assert.deepEqual(ids('非现场'),['3','4','5']);
+ assert.deepEqual(ids('不要 80 年代'),['2','4','5']);
+ assert.deepEqual(ids('想听 80 年代，不要现场'),['3']);
+ assert.deepEqual(ids('no remix, not a live crowd'),['2','3','5']);
+});
 
 test('a falsy rejection also stops all later paid batches',async()=>{
  let calls=0;await assert.rejects(rankWithJev(seed,Array.from({length:500},(_,i)=>song(i+2)),'close','','test-only-key',feedback,{

@@ -44,7 +44,8 @@ export class JobRunner {
    if (outcome.kind === "busy") await this.state.storage.setAlarm(this.deps.now() + BUSY_RETRY_MS);
    else if (outcome.kind !== "unconfirmed" && outcome.job.status === "pending") await this.state.storage.setAlarm(this.deps.now());
    else await this.stop();
-  } catch {
+  } catch (error) {
+   console.error("job_runner_alarm_error", { name: error instanceof Error ? error.name : typeof error });
    // Never let the platform retry an alarm blindly: the lease decides what may run next.
    await this.stop();
   }

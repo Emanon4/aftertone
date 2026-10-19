@@ -25,13 +25,16 @@ export async function getTurnstileToken(siteKey: string, lang: "zh" | "en"): Pro
  host.className = "turnstile-host";
  document.body.appendChild(host);
  try {
+  let id: string | undefined, timer: ReturnType<typeof setTimeout> | undefined;
   return await new Promise<string>((resolve, reject) => {
-   const id = turnstile.render(host, {
+   id = turnstile.render(host, {
     sitekey: siteKey, size: "flexible", appearance: "interaction-only", language: lang === "zh" ? "zh-cn" : "en",
     callback: (token: string) => resolve(token), "error-callback": () => reject(new Error("turnstile")), "timeout-callback": () => reject(new Error("turnstile")),
    });
-   setTimeout(() => reject(new Error("turnstile")), 60_000);
-   void id;
+   timer = setTimeout(() => reject(new Error("turnstile")), 60_000);
+  }).finally(() => {
+   clearTimeout(timer);
+   try { if (id) turnstile.remove(id); } catch { /* Already gone. */ }
   });
  } finally { host.remove(); }
 }
