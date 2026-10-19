@@ -2,6 +2,8 @@ import type { Track } from "../music";
 import legacyManifest from "../../data/library-manifest.json";
 import { clean, selectCandidatePool } from "./recall";
 
+/** A controlled, user-facing message (never upstream text), safe to return from the API as is. */
+export class CatalogError extends Error { constructor(message: string) { super(message); this.name = "CatalogError"; } }
 export type CatalogManifest = {
  version: number; tracks: number; artists: number; previewable: number; collectedAt: string;
  collectionGroups?: string[]; shards?: { file: string; count: number; groups: string[] }[];
@@ -15,8 +17,7 @@ export const scriptGroup = (text: string) => /[\u3040-\u30ff\uac00-\ud7af\u1100-
  * Groups for a seed whose artist has none: vote among the live related/radio artists found in the
  * artist table (a group needs a quarter of them, at most two), plus the seed's writing system.
  */
-export function voteSeedGroups(seed: Track, hintArtists: string[], artists: Artist[]): string[] {
- const byName = new Map(artists.map(a => [clean(a.name), a]));
+export function voteSeedGroups(seed: Track, hintArtists: string[], artists: Artist[], byName = new Map(artists.map(a => [clean(a.name), a]))): string[] {
  const found = [...new Set(hintArtists.map(clean))].map(n => byName.get(n)).filter((a): a is Artist => Boolean(a) && artistGroups(a).length > 0);
  const counts = new Map<string, number>();
  for (const a of found) for (const g of artistGroups(a)) counts.set(g, (counts.get(g) || 0) + 1);
@@ -28,10 +29,10 @@ export function voteSeedGroups(seed: Track, hintArtists: string[], artists: Arti
 export type CompactShard = { albums: [string, string, string, string | null, string[] | null][]; tracks: [string, string, number, number, number, number, 0 | 1][] };
 /** Expand a compact shard back into Track objects (see scripts/compact-catalog.mjs). */
 export function expandCompactShard(shard: CompactShard, artists: Artist[], groups: string[]): Track[] {
- if (!shard || !Array.isArray(shard.albums) || !Array.isArray(shard.tracks)) throw new Error("歌曲索引格式无效。");
+ if (!shard || !Array.isArray(shard.albums) || !Array.isArray(shard.tracks)) throw new CatalogError("歌曲索引格式无效。");
  return shard.tracks.map(([id, title, ai, ali, duration, mask, preview]) => {
   const album = shard.albums[ali], artist = artists[ai];
-  if (!album || !artist || !/^[0-9a-f]{32}$/.test(album[2])) throw new Error("歌曲索引格式无效。");
+  if (!album || !artist || !/^[0-9a-f]{32}$/.test(album[2])) throw new CatalogError("歌曲索引格式无效。");
   const [albumId, albumTitle, cover, year, genres] = album;
   return { id, provider: "deezer", title, artist: artist.name, artistId: artist.id, album: albumTitle, albumId,
    image: `https://cdn-images.dzcdn.net/images/cover/${cover}/500x500-000000-80-0-0.jpg`, url: `https://www.deezer.com/track/${id}`,
@@ -45,18 +46,36 @@ const SHARD_FILE: Record<number, RegExp> = { 2: /^part-\d{3,6}\.json$/, 3: /^sha
 export const libraryStats = { tracks: legacyManifest.tracks, artists: legacyManifest.artists, previewable: legacyManifest.previewable, collectedAt: legacyManifest.collectedAt };
 const MAX_ROWS = 20_000;
 async function readJson(response: Response, maxBytes = 4_000_000): Promise<unknown> {
- if (!response.ok) throw new Error("歌曲索引暂时无法加载，请稍后重试。");
+ if (!response.ok) throw new CatalogError("歌曲索引暂时无法加载，请稍后重试。");
  const reader = response.body?.getReader();
- if (!reader) throw new Error("歌曲索引内容为空。");
+ if (!reader) throw new CatalogError("歌曲索引内容为空。");
  let bytes = 0, text = ""; const decoder = new TextDecoder();
  try { while (true) { const { done, value } = await reader.read(); if (done) break;
-  bytes += value.length; if (bytes > maxBytes) { await reader.cancel(); throw new Error("歌曲索引分片超过大小限制。"); }
+  bytes += value.length; if (bytes > maxBytes) { await reader.cancel(); throw new CatalogError("歌曲索引分片超过大小限制。"); }
   text += decoder.decode(value, { stream: true });
  } } finally { reader.releaseLock(); }
  return JSON.parse(text + decoder.decode());
 }
 const assetFetch = (path: string, requestUrl: string, assets?: AssetReader) => assets ? assets.fetch(new URL(path, requestUrl)) : fetch(new URL(path, requestUrl));
-export async function getLibraryManifest(requestUrl = "http://localhost", assets?: AssetReader): Promise<CatalogManifest> {
+// The manifest and artist table are read on every request but change only with a catalog upload.
+// Keep them parsed per isolate for a minute (short, so an R2 catalog upload is picked up quickly),
+// keyed by the reader (static assets or R2).
+// Shards stay uncached: all of them together would not fit comfortably in isolate memory.
+const INDEX_TTL_MS = 60_000;
+type ArtistIndex = { artists: Artist[]; first: Map<string, Artist>; last: Map<string, Artist> };
+const manifestCache = new WeakMap<AssetReader, { expires: number; value: Promise<CatalogManifest> }>();
+const artistCache = new WeakMap<AssetReader, { expires: number; value: Promise<ArtistIndex> }>();
+function cached<T>(store: WeakMap<AssetReader, { expires: number; value: Promise<T> }>, assets: AssetReader | undefined, load: () => Promise<T>): Promise<T> {
+ if (!assets) return load();
+ const hit = store.get(assets); if (hit && hit.expires > Date.now()) return hit.value;
+ const value = load(); store.set(assets, { expires: Date.now() + INDEX_TTL_MS, value });
+ value.catch(() => { if (store.get(assets)?.value === value) store.delete(assets); });
+ return value;
+}
+export function getLibraryManifest(requestUrl = "http://localhost", assets?: AssetReader): Promise<CatalogManifest> {
+ return cached(manifestCache, assets, () => readManifest(requestUrl, assets));
+}
+async function readManifest(requestUrl: string, assets?: AssetReader): Promise<CatalogManifest> {
  const response = await assetFetch("/catalog/manifest.json", requestUrl, assets);
  if (response.status === 404) return { version: 1, ...libraryStats };
  const value = await readJson(response, 1_000_000) as CatalogManifest;
@@ -64,7 +83,7 @@ export async function getLibraryManifest(requestUrl = "http://localhost", assets
  if (!file || !Number.isInteger(value.tracks) || value.tracks < 0 || !Array.isArray(value.shards)
   || (value.version === 3 && !Array.isArray(value.collectionGroups))
   || value.shards.some(s => !file.test(s.file) || !Number.isInteger(s.count) || s.count < 0 || s.count > MAX_ROWS || !Array.isArray(s.groups))) {
-  throw new Error("歌曲索引清单无效，请稍后重试。");
+  throw new CatalogError("歌曲索引清单无效，请稍后重试。");
  }
  return value;
 }
@@ -77,16 +96,21 @@ export async function loadLibrarySample(seed: Track, requestUrl: string, options
  const random = options.random || Math.random;
  if (manifest.version === 1) {
   const value = await readJson(await assetFetch("/catalog/library.json", requestUrl, options.assets), 16_000_000);
-  if (!Array.isArray(value)) throw new Error("歌曲索引格式无效。");
+  if (!Array.isArray(value)) throw new CatalogError("歌曲索引格式无效。");
   const tracks = (value as Track[]).slice(0, maxRows);
   return { seed, tracks, manifest, shardsRead: 1, rowsScanned: tracks.length };
  }
- const artistsResponse = await assetFetch("/catalog/artists.json", requestUrl, options.assets);
- const artists = await readJson(artistsResponse, 3_000_000) as Artist[];
- if (!Array.isArray(artists)) throw new Error("艺术家索引格式无效。");
- const entry = artists.find(a => clean(a.name) === clean(seed.artist));
+ const { artists, first, last } = await cached(artistCache, options.assets, async () => {
+  const artists = await readJson(await assetFetch("/catalog/artists.json", requestUrl, options.assets), 3_000_000) as Artist[];
+  if (!Array.isArray(artists)) throw new CatalogError("艺术家索引格式无效。");
+  // Two lookups keep the original semantics for the few duplicate names: find() took the first, the vote the last.
+  const first = new Map<string, Artist>();
+  for (const a of artists) if (!first.has(clean(a.name))) first.set(clean(a.name), a);
+  return { artists, first, last: new Map(artists.map(a => [clean(a.name), a])) };
+ });
+ const entry = first.get(clean(seed.artist));
  let own = artistGroups(entry), groupSource = entry?.groups.length ? "curated" : own.length ? "inferred" : "none";
- if (!own.length) { own = voteSeedGroups(seed, options.hintArtists || [], artists); if (own.length) groupSource = "related-artists"; }
+ if (!own.length) { own = voteSeedGroups(seed, options.hintArtists || [], artists, last); if (own.length) groupSource = "related-artists"; }
  seed = { ...seed, collectionGroups: [...new Set([...(seed.collectionGroups || []), ...own])] };
  const groups = new Set(seed.collectionGroups || []);
  const preferred = shuffled(manifest.shards!.filter(s => s.groups.some(g => groups.has(g))), random);
@@ -104,7 +128,7 @@ export async function loadLibrarySample(seed: Track, requestUrl: string, options
  const loaded = await Promise.all(selected.map(async shard => {
   const value = await readJson(await assetFetch(`/catalog/${shard.file}`, requestUrl, options.assets));
   const rows = manifest.version === 3 ? expandCompactShard(value as CompactShard, artists, manifest.collectionGroups!) : value as Track[];
-  if (!Array.isArray(rows) || rows.length !== shard.count) throw new Error("歌曲索引正在更新，请稍后重试。");
+  if (!Array.isArray(rows) || rows.length !== shard.count) throw new CatalogError("歌曲索引正在更新，请稍后重试。");
   return rows;
  }));
  const tracks = loaded.flat();
@@ -124,10 +148,10 @@ const cache = new Map<string, { expires: number; data: Raw }>();
 export async function providerFetch(url: string, ttl = 300_000): Promise<Raw> {
  const prior = cache.get(url); if (prior && prior.expires > Date.now()) return prior.data;
  const response = await fetch(url, { signal: AbortSignal.timeout(12_000), headers: { Accept: "application/json" } });
- if (!response.ok) throw new Error("音乐资料服务暂时无法连接，请稍后重试。");
+ if (!response.ok) throw new CatalogError("音乐资料服务暂时无法连接，请稍后重试。");
  const data = await readJson(response, 2_000_000) as Raw;
- if (data.error) throw new Error("暂时无法取得这首歌的资料，请换一首试试。");
- if (ttl) { if (cache.size > 350) cache.clear(); cache.set(url, { expires: Date.now() + ttl, data }); }
+ if (data.error) throw new CatalogError("暂时无法取得这首歌的资料，请换一首试试。");
+ if (ttl) { cache.delete(url); cache.set(url, { expires: Date.now() + ttl, data }); for (const old of cache.keys()) { if (cache.size <= 350) break; cache.delete(old); } }
  return data;
 }
 export const deezer = (path: string, ttl?: number) => providerFetch(`https://api.deezer.com/${path}`, ttl);
@@ -141,12 +165,12 @@ export async function searchSongs(query: string, country = "SG"): Promise<Track[
  const calls = [deezer(`search?q=${encodeURIComponent(query)}&limit=16`).then(x => (x.data || []).filter((t: Raw) => t.readable !== false).map((t: Raw) => normalizeDeezer(t)))];
  if (/[\u3400-\u9fff]/.test(query)) calls.push(providerFetch(`https://itunes.apple.com/search?term=${encodeURIComponent(query)}&entity=song&limit=12&country=${country}`, 60_000).then(x => x.results.filter((t: Raw) => t.kind === "song").map(t => normalizeApple(t, country))));
  const results = await Promise.allSettled(calls); const tracks = results.flatMap(r => r.status === "fulfilled" ? r.value : []);
- if (!tracks.length && results.every(r => r.status === "rejected")) throw new Error("搜歌服务暂时不可用，请稍后重试。");
+ if (!tracks.length && results.every(r => r.status === "rejected")) throw new CatalogError("搜歌服务暂时不可用，请稍后重试。");
  const seen = new Set<string>(); return tracks.filter(t => { const k = clean(t.title) + "|" + clean(t.artist); if (seen.has(k)) return false; seen.add(k); return true; }).slice(0, 20);
 }
 export async function getTrack(id: string, provider = "deezer", country = "SG"): Promise<Track> {
- if (!/^\d{1,18}$/.test(id)) throw new Error("歌曲编号无效。");
- if (provider === "itunes") { const x = await providerFetch(`https://itunes.apple.com/lookup?id=${id}&country=${country}`, 0); if (!x.results?.[0]?.trackId) throw new Error("这首歌目前无法取得，请重新搜索。"); return normalizeApple(x.results[0], country); }
+ if (!/^\d{1,18}$/.test(id)) throw new CatalogError("歌曲编号无效。");
+ if (provider === "itunes") { const x = await providerFetch(`https://itunes.apple.com/lookup?id=${id}&country=${country}`, 0); if (!x.results?.[0]?.trackId) throw new CatalogError("这首歌目前无法取得，请重新搜索。"); return normalizeApple(x.results[0], country); }
  return normalizeDeezer(await deezer(`track/${id}`, 0));
 }
 async function enrichSeed(seed: Track): Promise<Track> {
@@ -178,6 +202,6 @@ export async function recall(seed: Track, excluded: string[], direction = "close
   if (top.length) seed = { ...seed, relatedArtistAlbumGenres: top };
  }
  const candidates = selectCandidatePool(seed, loaded.tracks, live, excluded, direction, options.limit || 5000, options.random);
- if (!candidates.length) throw new Error("这一方向暂时没有新的可试听歌曲，试试另一个起点。");
+ if (!candidates.length) throw new CatalogError("这一方向暂时没有新的可试听歌曲，试试另一个起点。");
  return { seed, candidates, libraryCount: loaded.manifest.tracks, recallMeta: { targetCount: options.limit || 5000, rowsScanned: loaded.rowsScanned, shardsRead: loaded.shardsRead, seedGroups: seed.collectionGroups, groupSource: "groupSource" in loaded ? loaded.groupSource : "none", returnedCount: candidates.length, scope: "bounded-index-sample-and-live-relations" } };
 }

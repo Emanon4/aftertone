@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {build} from 'esbuild';
 
 const bundle=await build({stdin:{contents:'export * from "./lib/server/model-provider.ts";export {JevScoringError} from "./lib/server/recommend.ts";',resolveDir:process.cwd(),loader:'ts'},bundle:true,platform:'node',format:'esm',write:false});
-const {COMPATIBLE_BASE_URLS,parseModelConfig,rankWithCompatible,JevScoringError}=await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].contents).toString('base64')}`);
+const {COMPATIBLE_BASE_URLS,parseModelConfig,rankWithCompatible,JevScoringError,samplingFor}=await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].contents).toString('base64')}`);
 const seed={id:'1',provider:'deezer',title:'Seed',artist:'Seed Artist',album:'Album',image:'',url:'',duration:180};
 const song=(id,extra={})=>({...seed,id:String(id),artist:`Artist ${id}`,title:`Song ${id}`,source:'关联艺术家',...extra});
 const songs=n=>Array.from({length:n},(_,i)=>song(i+2));
@@ -56,7 +56,7 @@ test('5000 candidates receive 5000 normalized scores in 79 calls and at most fou
   assert.equal(url,'https://api.openai.com/v1/chat/completions');assert.equal(init.redirect,'manual');assert.equal(init.method,'POST');
   assert.equal(init.headers.Authorization,'Bearer test-only-key');assert.equal(request.model,'gpt-test');
   assert.deepEqual(request.response_format,{type:'json_object'});assert.equal(request.temperature,.1);
-  assert.ok(request.max_tokens>=Object.keys(p.questions).length*50);
+  assert.ok(request.max_completion_tokens>=Object.keys(p.questions).length*50);assert.equal(request.max_tokens,undefined);
   assert.match(request.messages[0].content,/untrusted data/);assert.match(request.messages[0].content,/Never infer melody/);
   assert.match(request.messages[0].content,/not official genres or audio features/);
   assert.deepEqual(p.state.feedback,feedback);assert.equal(p.state.seed.title,seed.title);assert.equal(p.state.candidates,undefined);
@@ -83,7 +83,7 @@ test('notes retain independent fit and request questions and combine only valida
  let questions=0,calls=0;
  const result=await rank(songs(130),{fetcher:async(_url,init)=>{
   const p=payload(init);calls++;assert.equal(p.state.currentRequest,'Documented slow tempo');assert.ok(Object.keys(p.questions).length<=128);
-  assert.ok(JSON.parse(init.body).max_tokens<=8192);
+  assert.ok(JSON.parse(init.body).max_completion_tokens<=8192);
   const scores=Object.keys(p.questions).map(id=>{questions++;return {id,score:id.startsWith('fit_')?.9:.3,reason:'Invented guitar sound must never reach the user'};});
   return Response.json(envelope(scores));
  }},'Documented slow tempo');
@@ -217,4 +217,11 @@ test('approved deployment bases work and invalid local options never start reque
 test('scores below the relevance threshold remain actually scored and observer errors do not restart work',async()=>{
  let calls=0;const result=await rank(songs(2),{batchSize:1,concurrency:1,onProgress:()=>{throw Error('test-only-key');},fetcher:async(_url,init)=>{calls++;return Response.json(envelope(scoresFor(init,.2)));}});
  assert.equal(calls,2);assert.equal(result.actualScoredCount,2);assert.equal(result.qualifiedCount,0);assert.deepEqual(result.tracks,[]);
+});
+
+test('OpenAI reasoning models get reasoning-safe sampling; other providers keep max_tokens',()=>{
+ assert.deepEqual(samplingFor('https://api.openai.com/v1','gpt-5-mini',2000),{max_completion_tokens:8000});
+ assert.deepEqual(samplingFor('https://api.openai.com/v1','o4-mini',20000),{max_completion_tokens:32768});
+ assert.deepEqual(samplingFor('https://api.openai.com/v1','gpt-4.1-mini',2000),{temperature:.1,max_completion_tokens:2000});
+ assert.deepEqual(samplingFor('https://api.deepseek.com/v1','deepseek-v4-flash',9000),{temperature:.1,max_tokens:8192});
 });

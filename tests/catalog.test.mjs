@@ -66,3 +66,9 @@ test('the shard sample follows related-artist groups when the seed artist has no
  const loaded=await loadLibrarySample({...row(1,0),artist:'Unlabelled'},'https://api.example',{assets:reader(dir),random:()=>.5,hintArtists:['Men I Trust','Lamp']});
  assert.equal(loaded.groupSource,'related-artists');assert.deepEqual(loaded.seed.collectionGroups,['indie']);
 });
+test('the manifest and artist table are parsed once per reader, shards on every request',async()=>{
+ const {dir,rows}=await v2Catalog();spawnSync(process.execPath,['scripts/compact-catalog.mjs',dir]);
+ const base=reader(dir),reads={};const counting={fetch:async input=>{const name=new URL(String(input)).pathname;reads[name]=(reads[name]||0)+1;return base.fetch(input);}};
+ for(let i=0;i<3;i++){const loaded=await loadLibrarySample({...rows[0],artist:'Men I Trust'},'https://api.example',{assets:counting,random:()=>.5});assert.equal(loaded.tracks.length,rows.length);}
+ assert.equal(reads['/catalog/manifest.json'],1);assert.equal(reads['/catalog/artists.json'],1);assert.equal(reads['/catalog/shard-000.json'],3);
+});

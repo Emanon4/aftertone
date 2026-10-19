@@ -1,5 +1,5 @@
 // Defaults reviewed 2026-10: deepseek-chat was retired on 2026-07-24 in favour of deepseek-v4-flash.
-// OpenAI keeps a non-reasoning model because the adapter sends temperature and max_tokens.
+// OpenAI defaults to a fast non-reasoning model; reasoning models (o-series, GPT-5) also work, at a higher cost per round.
 export const modelTemplates = [
   {id:"openai",label:"OpenAI",baseUrl:"https://api.openai.com/v1",model:"gpt-4.1-mini"},
   {id:"deepseek",label:"DeepSeek",baseUrl:"https://api.deepseek.com/v1",model:"deepseek-v4-flash"},

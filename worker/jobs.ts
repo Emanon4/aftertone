@@ -23,14 +23,19 @@ export type NewJob = {
 };
 export const DEFAULT_DAILY_LIMIT = 30;
 const utcDay = (now: number) => new Date(now).toISOString().slice(0, 10);
-/** Atomically count one use in a daily bucket; false when the bucket is already full. */
-export async function consumeRateBudget(db: D1Database, bucket: string, now: number, limit: number): Promise<boolean> {
+/** Read-only check, used to stop a full bucket before recall; createJob does the atomic count. */
+export async function rateBudgetAvailable(db: D1Database, bucket: string, now: number, limit: number): Promise<boolean> {
  if (limit <= 0) return false;
- const row = await db.prepare("INSERT INTO api_rate_budget(bucket,day,count) VALUES (?,?,1) ON CONFLICT(bucket,day) DO UPDATE SET count=count+1 WHERE count<? RETURNING count")
-  .bind(bucket, utcDay(now), limit).first<{ count: number }>();
- return Boolean(row);
+ const row = await db.prepare("SELECT count FROM api_rate_budget WHERE bucket=? AND day=?").bind(bucket, utcDay(now)).first<{ count: number }>();
+ return !row || row.count < limit;
 }
-export async function createJob(db: D1Database, data: NewJob, now: number, dailyLimit = DEFAULT_DAILY_LIMIT): Promise<JobRow | null> {
+export type RateLimit = { bucket: string; limit: number };
+/**
+ * `rateLimits` (per-visitor and global ceilings) gate the job together with its daily budget and are
+ * only counted when the job is actually created, so a failed recall or a full site quota costs nothing.
+ */
+export async function createJob(db: D1Database, data: NewJob, now: number, dailyLimit = DEFAULT_DAILY_LIMIT, rateLimits: RateLimit[] = []): Promise<JobRow | null> {
+ if (rateLimits.some(rate => rate.limit <= 0)) return null;
  const id = crypto.randomUUID();
  if (Boolean(data.modelConfig) !== Boolean(data.keyFingerprint)) throw new Error("Personal model credentials must match the job configuration.");
  const batchSize = data.modelConfig?.provider === "openai-compatible" || data.notes.trim() ? 64 : 128;
@@ -40,9 +45,12 @@ export async function createJob(db: D1Database, data: NewJob, now: number, daily
  const totalBatches = Math.ceil(data.candidates.length / batchSize);
  const day = utcDay(now), staleDay = utcDay(now - 7 * 86_400_000);
  const bucket = data.keyFingerprint ? `key:${data.keyFingerprint}` : "site";
+ // The budget row only changes (and so the job is only inserted) while every rate bucket has room.
+ const rateGate = rateLimits.length ? `NOT EXISTS(SELECT 1 FROM api_rate_budget WHERE day=? AND (${rateLimits.map(() => "(bucket=? AND count>=?)").join(" OR ")}))` : "1";
+ const rateArgs = rateLimits.length ? [day, ...rateLimits.flatMap(rate => [rate.bucket, rate.limit])] : [];
  const budget = data.keyFingerprint
-  ? db.prepare("INSERT INTO api_personal_daily_budget(bucket,day,count) VALUES (?,?,1) ON CONFLICT(bucket,day) DO UPDATE SET count=count+1 WHERE count<? RETURNING count").bind(bucket, day, dailyLimit)
-  : db.prepare("INSERT INTO api_daily_budget(day,count) VALUES (?,1) ON CONFLICT(day) DO UPDATE SET count=count+1 WHERE count<? RETURNING count").bind(day, dailyLimit);
+  ? db.prepare(`INSERT INTO api_personal_daily_budget(bucket,day,count) SELECT ?,?,1 WHERE ${rateGate} ON CONFLICT(bucket,day) DO UPDATE SET count=count+1 WHERE count<? RETURNING count`).bind(bucket, day, ...rateArgs, dailyLimit)
+  : db.prepare(`INSERT INTO api_daily_budget(day,count) SELECT ?,1 WHERE ${rateGate} ON CONFLICT(day) DO UPDATE SET count=count+1 WHERE count<? RETURNING count`).bind(day, ...rateArgs, dailyLimit);
  const countSql = data.keyFingerprint ? "SELECT count FROM api_personal_daily_budget WHERE day=? AND bucket=?" : "SELECT count FROM api_daily_budget WHERE day=?";
  const countArgs = data.keyFingerprint ? [day, bucket] : [day];
  const values = [id, now, now, now + JOB_TTL_MS, JSON.stringify(data.seed), data.direction, data.notes, JSON.stringify(data.feedback), data.candidates.length, totalBatches, batchSize, chunks.length, data.libraryCount, JSON.stringify(data.recallMeta), data.modelConfig ? JSON.stringify(data.modelConfig) : null, data.keyFingerprint || null, bucket];
@@ -57,6 +65,7 @@ export async function createJob(db: D1Database, data: NewJob, now: number, daily
    SELECT ?,'pending',${values.slice(1).map(() => "?").join(",")},?-(${countSql}) WHERE changes()=1 RETURNING *`)
    .bind(...values, dailyLimit, ...countArgs),
   ...chunks.map((tracks, i) => db.prepare("INSERT INTO api_job_steps(job_id,step_index,candidates_json) SELECT ?,?,? WHERE EXISTS(SELECT 1 FROM api_jobs WHERE id=?)").bind(id, i, JSON.stringify(tracks), id)),
+  ...rateLimits.map(rate => db.prepare("INSERT INTO api_rate_budget(bucket,day,count) SELECT ?,?,1 WHERE EXISTS(SELECT 1 FROM api_jobs WHERE id=?) ON CONFLICT(bucket,day) DO UPDATE SET count=count+1").bind(rate.bucket, day, id)),
  ];
  const results = await db.batch<JobRow>(statements);
  return results[5].results[0] || null;
@@ -113,8 +122,21 @@ export async function finishStep(db: D1Database, job: JobRow, metrics: JevMetric
     metrics?.usage.input_tokens || 0, metrics?.usage.output_tokens || 0, metrics ? Number(metrics.usageComplete) : 0, metrics?.wallMs || 0,
     error, JSON.stringify(top), JSON.stringify(models), error, finished, now, job.id, job.lease_token),
   db.prepare("DELETE FROM api_job_steps WHERE job_id=? AND step_index=?").bind(job.id, job.next_step),
+  ...(error ? [refundUnscored(db, job, now)] : []),
  ]);
  return results[0].results[0] || readJob(db, job.id, now);
+}
+/**
+ * A round that failed before a single candidate was scored (an upstream 429, outage or bad model
+ * name) gives its daily round back. Per-visitor limits are not refunded, so this cannot be looped.
+ * Only this lease's own failure qualifies: it alone clears the lease and stamps updated_at=now.
+ */
+function refundUnscored(db: D1Database, job: JobRow, now: number) {
+ const failedHere = "EXISTS(SELECT 1 FROM api_jobs WHERE id=? AND status='failed' AND scored_count=0 AND lease_token IS NULL AND updated_at=?)";
+ const day = utcDay(job.created_at);
+ return job.quota_bucket === "site"
+  ? db.prepare(`UPDATE api_daily_budget SET count=count-1 WHERE day=? AND count>0 AND ${failedHere}`).bind(day, job.id, now)
+  : db.prepare(`UPDATE api_personal_daily_budget SET count=count-1 WHERE bucket=? AND day=? AND count>0 AND ${failedHere}`).bind(job.quota_bucket, day, job.id, now);
 }
 export function jobView(job: JobRow, now: number) {
  const elapsedMs = Math.max(0, (job.finished_at ?? now) - job.created_at);

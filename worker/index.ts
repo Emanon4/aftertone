@@ -1,9 +1,9 @@
-import { getLibraryManifest, getTrack, recall, searchSongs, type AssetReader } from "../lib/server/catalog";
+import { CatalogError, getLibraryManifest, getTrack, recall, searchSongs, type AssetReader } from "../lib/server/catalog";
 import { applyExplicitFilters } from "../lib/server/filters";
 import { DEFAULT_CANDIDATE_LIMIT, prerankCandidates } from "../lib/server/prerank";
 import { rankWithJev, type Direction } from "../lib/server/recommend";
 import { COMPATIBLE_BASE_URLS, parseModelConfig, rankWithCompatible, type ModelConfig } from "../lib/server/model-provider";
-import { cancelJob, consumeRateBudget, createJob, jobView, readJob } from "./jobs";
+import { cancelJob, createJob, jobView, rateBudgetAvailable, readJob, type RateLimit } from "./jobs";
 import { jobModelConfig, runJobStep } from "./step";
 
 export const DEFAULT_ALLOWED_ORIGINS = "https://emanon4.github.io";
@@ -47,6 +47,27 @@ async function sha256(value: string): Promise<string> {
  return Array.from(new Uint8Array(bytes), value => value.toString(16).padStart(2, "0")).join("");
 }
 const fingerprint = (key: string) => sha256(key);
+/**
+ * Daily per-visitor bucket. The salt must stay secret: with a public one, the 2^32 IPv4 space can be
+ * hashed back to addresses. Without IP_HASH_SALT the site key (already a secret) seeds it. IPv6 is
+ * counted per /64, the block one subscriber usually holds.
+ */
+export async function visitorBucket(env: AftertoneApiEnv, ip: string, now: number): Promise<string> {
+ const salt = env.IP_HASH_SALT || (env.TYPESAFE_API_KEY ? `site-key:${env.TYPESAFE_API_KEY}` : "");
+ if (!salt) throw new ApiError("服务配置不完整（缺少 IP_HASH_SALT），暂时无法找歌。", 503);
+ const day = new Date(now).toISOString().slice(0, 10);
+ return `ip:${(await sha256(`${salt}|${day}|${visitorNetwork(ip)}`)).slice(0, 32)}`;
+}
+export function visitorNetwork(ip: string): string {
+ if (!ip.includes(":")) return ip;
+ // An IPv4-mapped address (::ffff:192.0.2.1) is one IPv4 visitor, not a /64.
+ if (ip.includes(".")) return ip.slice(ip.lastIndexOf(":") + 1);
+ let groups: string[];
+ const [head, tail] = ip.toLowerCase().split("::");
+ if (tail === undefined) groups = head.split(":");
+ else { const left = head ? head.split(":") : [], right = tail ? tail.split(":") : []; groups = [...left, ...Array(Math.max(0, 8 - left.length - right.length)).fill("0"), ...right]; }
+ return `${groups.slice(0, 4).map(group => group.replace(/^0+(?=.)/, "")).join(":")}::/64`;
+}
 function sameFingerprint(left: string, right: string): boolean {
  if (left.length !== right.length) return false;
  let difference = 0; for (let i = 0; i < left.length; i++) difference |= left.charCodeAt(i) ^ right.charCodeAt(i);
@@ -93,13 +114,17 @@ export async function verifyTurnstile(secret: string, token: string, ip: string 
  } catch { return false; }
 }
 /** Reads catalog files from R2 when bound, so the large index can live outside Git and static assets. */
+const r2Readers = new WeakMap<R2Bucket, AssetReader>();
 export function r2Reader(bucket: R2Bucket): AssetReader {
- return { fetch: async input => {
+ // One reader per bucket, so the parsed catalog index cache (keyed by reader) is reused across requests.
+ const known = r2Readers.get(bucket); if (known) return known;
+ const reader: AssetReader = { fetch: async input => {
   const key = new URL(String(input)).pathname.replace(/^\/+/, "");
   if (!/^catalog\/[a-z0-9-]+\.json$/.test(key)) return new Response(null, { status: 404 });
   const object = await bucket.get(key);
   return object ? new Response(object.body, { headers: { "Content-Type": "application/json" } }) : new Response(null, { status: 404 });
  } };
+ r2Readers.set(bucket, reader); return reader;
 }
 
 // Zone cache: a no-op on *.workers.dev, effective once the API has a custom domain.
@@ -107,7 +132,7 @@ const edgeCache = (): Cache | undefined => typeof caches !== "undefined" ? (cach
 const defaults = { getLibraryManifest, getTrack, recall, searchSongs, rankWithJev, rankWithCompatible, verifyCompatibleKey, verifyTurnstile, now: Date.now, cache: undefined as Cache | undefined };
 export function createApi(overrides: Partial<typeof defaults> = {}) {
  const deps = { ...defaults, ...overrides };
- return async (request: Request, env: AftertoneApiEnv): Promise<Response> => {
+ return async (request: Request, env: AftertoneApiEnv, ctx?: Pick<ExecutionContext, "waitUntil">): Promise<Response> => {
   const config = settings(env);
   const origin = request.headers.get("origin"), url = new URL(request.url);
   const headers = new Headers({ "Cache-Control": "no-store", "Vary": "Origin", "X-Content-Type-Options": "nosniff" });
@@ -140,9 +165,11 @@ export function createApi(overrides: Partial<typeof defaults> = {}) {
     if (cached) return respond(await cached.json());
     // Only provider round-trips count against the per-visitor limit; cache hits are free.
     const ip = request.headers.get("CF-Connecting-IP");
-    if (ip && env.MUSIC_LIMITER && !(await env.MUSIC_LIMITER.limit({ key: ip })).success) throw new ApiError("搜索太频繁了，请稍等一会儿再试。", 429);
+    if (ip && env.MUSIC_LIMITER && !(await env.MUSIC_LIMITER.limit({ key: visitorNetwork(ip) })).success) throw new ApiError("搜索太频繁了，请稍等一会儿再试。", 429);
     const body = id ? { track: await deps.getTrack(id, provider, config.country) } : { tracks: await deps.searchSongs(q!, config.country) };
-    await cache?.put(cacheKey, Response.json(body, { headers: { "Cache-Control": `public, max-age=${id ? 300 : 900}` } }));
+    const stored = cache?.put(cacheKey, Response.json(body, { headers: { "Cache-Control": `public, max-age=${id ? 300 : 900}` } }));
+    // Answer first; the cache write finishes in the background (and a failed write never fails the lookup).
+    if (stored) { const settled = stored.catch(() => undefined); if (ctx) ctx.waitUntil(settled); else await settled; }
     return respond(body);
    }
    if (url.pathname === "/api/recommend" && request.method === "POST") {
@@ -161,16 +188,19 @@ export function createApi(overrides: Partial<typeof defaults> = {}) {
      const token = typeof body.turnstileToken === "string" ? body.turnstileToken.slice(0, 2048) : "";
      if (!token || !(await deps.verifyTurnstile(env.TURNSTILE_SECRET_KEY, token, ip))) throw new ApiError("人机验证未通过，请刷新后再试。", 403);
     }
-    // Per-visitor ceiling before any provider recall. Only a salted daily hash is stored, never the IP.
-    if (ip) {
-     const day = new Date(deps.now()).toISOString().slice(0, 10);
-     const bucket = `ip:${(await sha256(`${env.IP_HASH_SALT || "aftertone"}|${day}|${ip}`)).slice(0, 32)}`;
-     if (!(await consumeRateBudget(env.DB, bucket, deps.now(), config.ipDaily))) throw new ApiError("今天这台设备的找歌次数已用完，明天再来。你仍然可以试听和收藏。", 429);
-    }
-    if (modelConfig && modelKey) {
-     if (!(await deps.verifyCompatibleKey(modelConfig, modelKey))) throw new ApiError("个人 API 密钥无效或没有权限，请检查后重新填写。", 401);
-     if (!(await consumeRateBudget(env.DB, "personal-global", deps.now(), config.personalGlobalDaily))) throw new ApiError("今天个人模型的总轮次已达上限，请明天再试。", 429);
-    }
+    // Per-visitor and global ceilings are checked before any provider recall, but only counted when
+    // the job is created. Only a salted daily hash is stored, never the IP.
+    const rateLimits: RateLimit[] = [];
+    if (ip) rateLimits.push({ bucket: await visitorBucket(env, ip, deps.now()), limit: config.ipDaily });
+    if (modelConfig) rateLimits.push({ bucket: "personal-global", limit: config.personalGlobalDaily });
+    const fullBucket = async () => {
+     for (const rate of rateLimits) if (!(await rateBudgetAvailable(env.DB, rate.bucket, deps.now(), rate.limit))) return rate.bucket;
+     return null;
+    };
+    const rateLimitError = (bucket: string) => new ApiError(bucket === "personal-global" ? "今天个人模型的总轮次已达上限，请明天再试。" : "今天这台设备的找歌次数已用完，明天再来。你仍然可以试听和收藏。", 429);
+    const full = await fullBucket();
+    if (full) throw rateLimitError(full);
+    if (modelConfig && modelKey && !(await deps.verifyCompatibleKey(modelConfig, modelKey))) throw new ApiError("个人 API 密钥无效或没有权限，请检查后重新填写。", 401);
     ensureConnected(request);
     const seed = await deps.getTrack(input.seed.id, input.seed.provider, config.country);
     ensureConnected(request);
@@ -181,12 +211,13 @@ export function createApi(overrides: Partial<typeof defaults> = {}) {
     const candidates = ranked.candidates;
     const recallMeta = { ...recalled.recallMeta, returnedAfterFilters: filtered.length, prerankPool: ranked.poolCount, prerankExploration: ranked.explorationCount, candidateLimit: config.candidateLimit };
     if (!candidates.length) return respond({ status: "done", jobId: null, tracks: [], modelConfig, credentialMode: modelConfig ? "personal" : "site", progress: { scoredCount: 0, totalCount: 0, completedBatches: 0, totalBatches: 0, elapsedMs: 0 }, meta: { engine: "constraints", candidateCount: 0, actualScoredCount: 0, libraryCount: recalled.libraryCount, requestCount: 0, elapsedMs: 0, wallMs: 0, jevMs: 0, recall: recallMeta } });
-    const job = await createJob(env.DB, { ...input, modelConfig, keyFingerprint, seed: recalled.seed, candidates, libraryCount: recalled.libraryCount, recallMeta }, deps.now(), modelConfig ? config.personalDaily : config.siteDaily);
+    const job = await createJob(env.DB, { ...input, modelConfig, keyFingerprint, seed: recalled.seed, candidates, libraryCount: recalled.libraryCount, recallMeta }, deps.now(), modelConfig ? config.personalDaily : config.siteDaily, rateLimits);
     if (request.signal.aborted) {
      // The transaction may already have committed, but no model work should remain pending.
      if (job) await cancelJob(env.DB, job.id, deps.now());
      ensureConnected(request);
     }
+    if (!job) { const raced = await fullBucket(); if (raced) throw rateLimitError(raced); }
     if (!job) throw new ApiError(modelConfig ? `这把个人密钥今天的 ${config.personalDaily} 轮找歌已用完，请明天再继续。` : `今天全站的 ${config.siteDaily} 轮智能找歌已用完。你仍然可以试听和收藏，或使用个人 API 密钥。`, 429);
     let driver: "server" | "client" = "client";
     if (env.JOB_RUNNER) {
@@ -227,6 +258,9 @@ export function createApi(overrides: Partial<typeof defaults> = {}) {
    return respond({ error: "接口不存在。" }, 404);
   } catch (error) {
    if (error instanceof ApiError) return respond({ error: error.message }, error.status);
+   if (error instanceof CatalogError) return respond({ error: error.message }, 502);
+   // Name and route only: messages can echo upstream content, which is never logged.
+   console.error("api_unexpected_error", { route: url.pathname.replace(/[0-9a-f-]{36}/i, ":job"), method: request.method, name: error instanceof Error ? error.name : typeof error });
    return respond({ error: "服务暂时不可用，请稍后查询任务状态。" }, 502);
   }
  };

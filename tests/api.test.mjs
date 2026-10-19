@@ -4,7 +4,7 @@ import {readFile} from 'node:fs/promises';
 import {DatabaseSync} from 'node:sqlite';
 import {build} from 'esbuild';
 const bundle=await build({stdin:{contents:'export * from "./worker/index.ts";export * from "./worker/jobs.ts";export * from "./lib/server/recommend.ts";export * from "./lib/server/catalog.ts";export * from "./lib/server/model-provider.ts";export * from "./worker/runner.ts";export * from "./lib/server/prerank.ts";',resolveDir:process.cwd(),loader:'ts'},bundle:true,platform:'node',format:'esm',write:false});
-const {createApi,rankWithJev,rankWithCompatible,loadLibrarySample,JobRunner,verifyCompatibleKey,prerankCandidates,explainTrack}=await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].contents).toString('base64')}`);
+const {createApi,rankWithJev,rankWithCompatible,loadLibrarySample,JobRunner,verifyCompatibleKey,prerankCandidates,explainTrack,visitorNetwork}=await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].contents).toString('base64')}`);
 const schema=await readFile(new URL('../worker/migrations/0001_jobs.sql',import.meta.url),'utf8');
 const personalSchema=await readFile(new URL('../worker/migrations/0002_personal_models.sql',import.meta.url),'utf8');
 const quotaSchema=await readFile(new URL('../worker/migrations/0003_quotas.sql',import.meta.url),'utf8');
@@ -220,6 +220,30 @@ test('a global ceiling bounds personal-key jobs however many random keys are use
  const f=setup(1);f.env.PERSONAL_GLOBAL_DAILY_ROUNDS='3';
  const statuses=[];for(let i=0;i<5;i++)statuses.push((await f.api(req('/api/recommend',{...body,modelConfig:{provider:'jev'}},'POST','https://emanon4.github.io',`random-key-${i}`),f.env)).status);
  assert.deepEqual(statuses,[201,201,201,429,429]);
+});
+test('a visitor round is only counted when a job is actually created',async()=>{
+ let empty=true;const f=setup(5,undefined,{recall:async()=>{if(empty)throw new Error('这一方向暂时没有新的可试听歌曲');return {seed,candidates:songs(5),libraryCount:1,recallMeta:{}};}});f.env.IP_DAILY_ROUNDS='1';f.env.SITE_DAILY_ROUNDS='1';
+ assert.equal((await f.api(withIp('/api/recommend',body,'203.0.113.9'),f.env)).status,502);
+ assert.equal(f.db.db.prepare('SELECT COUNT(*) AS n FROM api_rate_budget').get().n,0);
+ empty=false;assert.equal((await f.api(withIp('/api/recommend',body,'198.51.100.4'),f.env)).status,201);
+ // The site quota is now full: the next visitor is refused without losing their own round.
+ const full=await f.api(withIp('/api/recommend',body,'203.0.113.9'),f.env);assert.equal(full.status,429);assert.match((await full.json()).error,/全站/);
+ assert.deepEqual(f.db.db.prepare('SELECT count FROM api_rate_budget').all().map(r=>r.count),[1]);
+});
+test('a round that fails before anything is scored gives its daily round back',async()=>{
+ const f=setup(100,()=>new Response('',{status:429}));f.env.SITE_DAILY_ROUNDS='1';
+ const job=await create(f);const failed=await(await f.api(req(`/api/jobs/${job.jobId}/step`,{step:0}),f.env)).json();assert.equal(failed.status,'failed');
+ assert.equal(f.db.db.prepare('SELECT count FROM api_daily_budget').get().count,0);
+ await create(f);assert.equal(f.db.db.prepare('SELECT count FROM api_daily_budget').get().count,1);
+});
+test('visitor limits count IPv6 per /64 and need a secret salt',async()=>{
+ assert.equal(visitorNetwork('203.0.113.9'),'203.0.113.9');
+ assert.equal(visitorNetwork('2001:db8:0:1::5'),visitorNetwork('2001:0db8:0000:0001:ffff:1:2:3'));
+ assert.notEqual(visitorNetwork('2001:db8:0:1::5'),visitorNetwork('2001:db8:0:2::5'));
+ assert.equal(visitorNetwork('::ffff:198.51.100.4'),'198.51.100.4');
+ const f=setup(5);delete f.env.TYPESAFE_API_KEY;
+ const response=await f.api(withIp('/api/recommend',{...body,modelConfig:{provider:'jev'}},'203.0.113.9',{'X-Model-Api-Key':'k'}),f.env);
+ assert.equal(response.status,503);assert.equal(f.db.db.prepare('SELECT COUNT(*) AS n FROM api_jobs').get().n,0);
 });
 test('verifyCompatibleKey only rejects explicit 401/403 from an allow-listed base',async()=>{
  const cfg={provider:'openai-compatible',baseUrl:'https://api.deepseek.com/v1',model:'m'};
