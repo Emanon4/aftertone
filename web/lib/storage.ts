@@ -7,13 +7,19 @@ export const DISMISS_REASONS: DismissReason[] = ["artist", "style", "energy-high
 export function readStored<T>(key: string, fallback: T): T {
  try { return JSON.parse(localStorage.getItem(key) || "null") ?? fallback; } catch { return fallback; }
 }
+/** Stored track lists come back through the same filter as an imported backup, so a damaged entry can't break the page. */
+export function readStoredTracks<T extends Track>(key: string): T[] {
+ const value = readStored<unknown>(key, []);
+ return Array.isArray(value) ? value.filter(isTrack) as T[] : [];
+}
 /** Preview URLs are short-lived signed links: never persist them. */
 export const withoutPreview = <T extends Track>(t: T): T => { const copy = { ...t }; delete copy.preview; return copy; };
 export function writeStored(key: string, value: unknown): boolean {
  try { localStorage.setItem(key, JSON.stringify(value)); return true; } catch { return false; }
 }
 
-const csvCell = (value: unknown) => { const text = String(value ?? ""); return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text; };
+// A leading = + - @ (or tab/CR) would make a spreadsheet run the cell as a formula: prefix a quote.
+const csvCell = (value: unknown) => { const raw = String(value ?? ""), text = /^[=+\-@\t\r]/.test(raw) ? `'${raw}` : raw; return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text; };
 export function toCsv(tracks: Track[]): string {
  const rows = [["title", "artist", "album", "year", "provider", "id", "url"], ...tracks.map(t => [t.title, t.artist, t.album, t.year || "", t.provider, t.id, t.url])];
  return "﻿" + rows.map(row => row.map(csvCell).join(",")).join("\n");

@@ -9,6 +9,8 @@ export type Track = {
   relatedArtistAlbumGenres?: string[];
   reason?: string; lane?: string; score?: number;
 };
+/** Name comparison used everywhere (same rule as the server's clean()): case, width and punctuation are ignored. */
+export const nameKey = (s: string) => s.toLowerCase().normalize("NFKC").replace(/[^\p{L}\p{N}]/gu, "");
 export const trackKey = (t: Pick<Track,"provider"|"id">) => `${t.provider}:${t.id}`;
 export const providerName = (t: Track) => t.provider === "itunes" ? "Apple Music" : "Deezer";
 export const seconds = (n: number) => `${Math.floor((n || 0)/60)}:${String(Math.floor((n || 0)%60)).padStart(2,"0")}`;

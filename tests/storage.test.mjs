@@ -4,7 +4,7 @@ import {build} from 'esbuild';
 import {fileURLToPath} from 'node:url';
 const root=fileURLToPath(new URL('..',import.meta.url));
 const bundle=await build({entryPoints:['web/lib/storage.ts'],absWorkingDir:root,bundle:true,platform:'node',format:'esm',write:false,alias:{'@':root}});
-const {parseBackup,toBackup,toCsv,toText,readShare,mergeTracks,withoutPreview}=await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].contents).toString('base64')}`);
+const {parseBackup,toBackup,toCsv,toText,readShare,mergeTracks,withoutPreview,readStoredTracks}=await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].contents).toString('base64')}`);
 const t=(id,extra={})=>({id:String(id),provider:'deezer',title:`Song ${id}`,artist:`Artist ${id}`,album:'A',image:'https://cdn.example/a.jpg',url:`https://www.deezer.com/track/${id}`,duration:200,preview:'https://signed.example/p.mp3',...extra});
 
 test('backups round-trip saved and dismissed songs without preview URLs',()=>{
@@ -33,4 +33,17 @@ test('share hashes accept only provider IDs, at most seven',()=>{
 test('merge keeps existing order and skips duplicates',()=>{
  assert.deepEqual(mergeTracks([t(1),t(2)],[t(2),t(3),t(3)]).map(x=>x.id),['1','2','3']);
  assert.equal(withoutPreview(t(1)).preview,undefined);
+});
+test('CSV cells that a spreadsheet would run as formulas are neutralized',()=>{
+ const csv=toCsv([t(1,{title:'=HYPERLINK("https://evil.example","x")',artist:'+cmd',album:'-1+2'}),t(2,{title:'@SUM(A1)',artist:'Plain'})]);
+ const lines=csv.split('\n');
+ assert.ok(lines[1].startsWith(`"'=HYPERLINK(""https://evil.example"",""x"")",'+cmd,'-1+2,`));
+ assert.ok(lines[2].startsWith(`'@SUM(A1),Plain,`));
+});
+test('damaged stored lists load as an empty or filtered list instead of breaking the page',()=>{
+ const store=new Map();globalThis.localStorage={getItem:k=>store.get(k)??null,setItem:(k,v)=>store.set(k,v)};
+ store.set('k','{"not":"a list"}');assert.deepEqual(readStoredTracks('k'),[]);
+ store.set('k','{broken');assert.deepEqual(readStoredTracks('k'),[]);
+ store.set('k',JSON.stringify([t(1),null,{id:'x'}]));assert.deepEqual(readStoredTracks('k').map(x=>x.id),['1']);
+ delete globalThis.localStorage;
 });

@@ -13,12 +13,12 @@ export function Hero({ track, eyebrow, index, total, onDot, playing, loading, on
 }) {
  const { t } = useI18n();
  const meta = [track.artist, track.album && track.album !== track.title ? track.album : "", track.year || "", t("hero.previewLength")].filter(Boolean);
- return <section className="hero" aria-live="polite">
+ return <section className="hero">
   <div className="hero-frame"><div className="hero-art" key={trackKey(track)} style={{ backgroundImage: track.image ? `url(${coverAt(track.image, 1000)})` : undefined }} role="img" aria-label={`${track.album || track.title}`} /></div>
   <div className="hero-shade" />
   <div className="hero-content">
    <p className="eyebrow"><i />{eyebrow}</p>
-   <h1 className="hero-title">{track.title}</h1>
+   <h1 className="hero-title" aria-live="polite">{track.title}</h1>
    <p className="hero-meta">{meta.map((m, i) => <span key={i}>{m}</span>)}</p>
    <p className="hero-tagline">{track.reason || t("hero.tagline")}</p>
    <div className="hero-actions">

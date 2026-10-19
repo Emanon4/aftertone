@@ -17,6 +17,8 @@ const sleep = (ms: number, signal: AbortSignal) => new Promise<void>((resolve, r
  const timer = setTimeout(resolve, ms);
  signal.addEventListener("abort", () => { clearTimeout(timer); reject(signal.reason); }, { once: true });
 });
+/** A resumed personal-key round stopped moving and this tab has no key to continue it. */
+export class StalledJobError extends Error { constructor() { super("stalled"); this.name = "StalledJobError"; } }
 const forgetActive = () => { try { localStorage.removeItem(ACTIVE_KEY); } catch { /* Nothing to forget. */ } };
 
 /**
@@ -60,6 +62,8 @@ export function useRecommendJob() {
      if (mark !== lastMark) { lastMark = mark; lastChange = Date.now(); }
      // The runner went quiet on a pending step: take over from the browser when it can.
      else if (canStep && driver === "server" && data.status === "pending" && Date.now() - lastChange > STALL_MS) { driver = "client"; setServerDriven(false); }
+     // Without the key nobody can take over; stop now instead of polling until the job expires.
+     else if (!canStep && data.status === "pending" && Date.now() - lastChange > STALL_MS * 2) throw new StalledJobError();
     } else {
      data = await parseResponse<JobData>(await fetch(`${jobUrl}/step`, { method: "POST", headers, body: JSON.stringify({ step: data.nextStep }), signal: c.signal }));
      lastChange = Date.now();
