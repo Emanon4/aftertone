@@ -23,7 +23,7 @@
     "compare:prerank": "node scripts/compare-prerank.mjs"
   },
   "dependencies": {
-    "lucide-react": "^1.55.0",
+    "lucide-react": "^1.61.0",
     "radix-ui": "^1.7.0",
     "react": "19.3.1",
     "react-dom": "19.3.1"
@@ -42,7 +42,7 @@
     "globals": "^17.13.0",
     "typescript": "5.9.3",
     "typescript-eslint": "^8.71.2",
-    "vite": "8.3.4",
+    "vite": "8.3.5",
     "wrangler": "4.151.0"
   },
   "type": "module",
