@@ -23,7 +23,7 @@
     "compare:prerank": "node scripts/compare-prerank.mjs"
   },
   "dependencies": {
-    "lucide-react": "^1.55.0",
+    "lucide-react": "^1.70.0",
     "radix-ui": "^1.7.0",
     "react": "19.3.1",
     "react-dom": "19.3.1"
@@ -31,18 +31,18 @@
   "devDependencies": {
     "@cloudflare/workers-types": "5.20261016.1",
     "@eslint/js": "^10.0.1",
-    "@playwright/test": "^1.64.0",
+    "@playwright/test": "^1.65.0",
     "@types/node": "22.20.5",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
-    "@vitejs/plugin-react": "6.1.2",
+    "@vitejs/plugin-react": "6.2.1",
     "esbuild": "^0.28.2",
     "eslint": "10.12.0",
     "eslint-plugin-react-hooks": "^7.1.1",
-    "globals": "^17.13.0",
+    "globals": "^17.14.0",
     "typescript": "5.9.3",
     "typescript-eslint": "^8.71.2",
-    "vite": "8.3.4",
+    "vite": "8.3.6",
     "wrangler": "4.151.0"
   },
   "type": "module",
